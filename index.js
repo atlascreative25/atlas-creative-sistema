@@ -52,7 +52,7 @@ const PedidoSchema = new mongoose.Schema(
     produto: { type: String, required: true },
     valor: { type: Number, required: true },
     status: { type: String, required: true },
-    anotacoes: { type: String, default: "" }, // ✅ NOVO: anotações do pedido
+    anotacoes: { type: String, default: "" },
     criadoEm: { type: Date, default: Date.now },
   },
   { versionKey: false }
@@ -82,7 +82,9 @@ const STATUS_LIST = [
   "Cancelado",
 ];
 
-// ===== HELPERS =====
+const STATUS_PENDENTES = new Set(["Orçamento", "Aguardando pagamento", "Em produção"]);
+const STATUS_PAGOS = new Set(["Pago", "Pronto", "Entregue"]);
+
 async function getNextNumero() {
   const counter = await Counter.findOneAndUpdate(
     { _id: "pedido" },
@@ -187,16 +189,13 @@ function onlyDigits(s) {
 }
 
 function waLinkBR(whatsapp) {
-  // aceita número com (21) 9xxxx-xxxx etc
   const digits = onlyDigits(whatsapp);
   if (!digits) return "";
-  // Se já tiver 55 no começo, usa; senão adiciona
   const phone = digits.startsWith("55") ? digits : `55${digits}`;
   return `https://wa.me/${phone}`;
 }
 
 function searchBoxHTML({ basePath, q, extraQuery = {} }) {
-  // mantém outros params no redirect (ex: mes)
   const hidden = Object.entries(extraQuery)
     .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`)
     .join("");
@@ -215,7 +214,7 @@ function searchBoxHTML({ basePath, q, extraQuery = {} }) {
   `;
 }
 
-function monthOptionsHTML(selectedKey, basePath, q) {
+function monthControlsHTML({ selectedKey, basePath, q = "", showPdf = true, showCsvPedidos = true, showCsvDespesas = true }) {
   const now = new Date();
   const opts = [];
   for (let i = 0; i < 12; i++) {
@@ -235,10 +234,23 @@ function monthOptionsHTML(selectedKey, basePath, q) {
         ${opts.join("")}
       </select>
 
-      <a href="/relatorio?mes=${encodeURIComponent(selectedKey)}"
-         style="background:gold;color:black;padding:8px 12px;border-radius:10px;text-decoration:none;font-weight:800;">
-         Baixar PDF
-      </a>
+      ${showPdf ? `
+        <a href="/relatorio?mes=${encodeURIComponent(selectedKey)}"
+          style="background:gold;color:black;padding:8px 12px;border-radius:10px;text-decoration:none;font-weight:800;">
+          Baixar PDF (mês)
+        </a>` : ""}
+
+      ${showCsvPedidos ? `
+        <a href="/export/pedidos.csv?mes=${encodeURIComponent(selectedKey)}"
+          style="background:#222;color:#fff;padding:8px 12px;border-radius:10px;text-decoration:none;font-weight:800;border:1px solid rgba(255,215,0,.25);">
+          Exportar Pedidos (CSV)
+        </a>` : ""}
+
+      ${showCsvDespesas ? `
+        <a href="/export/despesas.csv?mes=${encodeURIComponent(selectedKey)}"
+          style="background:#222;color:#fff;padding:8px 12px;border-radius:10px;text-decoration:none;font-weight:800;border:1px solid rgba(255,215,0,.25);">
+          Exportar Despesas (CSV)
+        </a>` : ""}
 
       <script>
         (function(){
@@ -286,10 +298,9 @@ function layout(titulo, conteudo) {
   `;
 }
 
-// ===== ROTAS BÁSICAS =====
+// ===== AUTH =====
 app.get("/", (req, res) => {
   if (req.session.logado) return res.redirect("/dashboard");
-
   res.send(`
   <body style="background:black;color:white;text-align:center;padding-top:100px;font-family:Arial">
     <h1 style="color:gold">Atlas Creative</h1>
@@ -315,7 +326,7 @@ app.get("/logout", (req, res) => {
   req.session.destroy(() => res.redirect("/"));
 });
 
-// ===== CLIENTES (BUSCA + BOTÃO WHATSAPP) =====
+// ===== CLIENTES =====
 app.get("/clientes", requireLogin, async (req, res) => {
   const q = String(req.query.q || "").trim();
   const query = q
@@ -329,7 +340,6 @@ app.get("/clientes", requireLogin, async (req, res) => {
     : {};
 
   const clientes = await Cliente.find(query).sort({ criadoEm: -1 });
-
   const buscaHTML = searchBoxHTML({ basePath: "/clientes", q });
 
   const linhas = clientes
@@ -342,9 +352,7 @@ app.get("/clientes", requireLogin, async (req, res) => {
               ${esc(c.nome)}
             </a>
           </td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
-            ${esc(c.whatsapp)}
-          </td>
+          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(c.whatsapp)}</td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(c.observacoes)}</td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
             ${
@@ -363,31 +371,26 @@ app.get("/clientes", requireLogin, async (req, res) => {
 
   const conteudo = `
     <h2 style="color:gold;margin:0 0 12px;">Clientes</h2>
-
     ${buscaHTML}
 
     <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;max-width:560px;">
       <h3 style="margin:0 0 10px;color:gold;font-size:16px;">Cadastrar cliente</h3>
-
       <form method="POST" action="/clientes">
         <div style="margin-bottom:10px;">
           <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Nome</div>
           <input name="nome" required
             style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
         </div>
-
         <div style="margin-bottom:10px;">
           <div style="opacity:.8;font-size:12px;margin-bottom:6px;">WhatsApp</div>
           <input name="whatsapp" placeholder="(21) 9xxxx-xxxx"
             style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
         </div>
-
         <div style="margin-bottom:12px;">
           <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Observações</div>
           <input name="observacoes" placeholder="Ex: prefere retirada / cliente fixo"
             style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
         </div>
-
         <button style="background:gold;color:black;padding:10px 16px;border:none;border-radius:10px;font-weight:700;">
           Salvar cliente
         </button>
@@ -417,28 +420,20 @@ app.get("/clientes", requireLogin, async (req, res) => {
 
 app.post("/clientes", requireLogin, async (req, res) => {
   const { nome, whatsapp, observacoes } = req.body;
-
   await Cliente.create({
     nome: String(nome || "").trim(),
     whatsapp: String(whatsapp || "").trim(),
     observacoes: String(observacoes || "").trim(),
   });
-
   res.redirect("/clientes");
 });
 
 app.get("/clientes/:id", requireLogin, async (req, res) => {
   const cliente = await Cliente.findById(req.params.id);
-  if (!cliente) {
-    return res.send(layout("Cliente", `<p>Cliente não encontrado. <a style="color:gold" href="/clientes">Voltar</a></p>`));
-  }
+  if (!cliente) return res.send(layout("Cliente", `<p>Cliente não encontrado. <a style="color:gold" href="/clientes">Voltar</a></p>`));
 
   const pedidos = await Pedido.find({ clienteId: cliente._id }).sort({ criadoEm: -1 });
-
-  const totalGasto = pedidos
-    .filter((p) => p.status !== "Cancelado")
-    .reduce((t, p) => t + Number(p.valor || 0), 0);
-
+  const totalGasto = pedidos.filter((p) => p.status !== "Cancelado").reduce((t, p) => t + Number(p.valor || 0), 0);
   const wa = waLinkBR(cliente.whatsapp);
 
   const linhas = pedidos
@@ -447,7 +442,7 @@ app.get("/clientes/:id", requireLogin, async (req, res) => {
       return `
         <tr>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
-            <a href="/pedido/${p._id}" style="color:gold;text-decoration:none;font-weight:800;">#${esc(num)}</a>
+            <a href="/pedido/${p._id}" style="color:gold;text-decoration:none;font-weight:900;">#${esc(num)}</a>
           </td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(p.produto)}</td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${money(p.valor)}</td>
@@ -462,19 +457,13 @@ app.get("/clientes/:id", requireLogin, async (req, res) => {
       <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;min-width:320px;">
         <h2 style="color:gold;margin:0 0 8px;">${esc(cliente.nome)}</h2>
         <div style="opacity:.85;margin-bottom:8px;">WhatsApp: ${esc(cliente.whatsapp || "-")}</div>
-
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-          ${
-            wa
-              ? `<a href="${esc(wa)}" target="_blank"
+          ${wa ? `<a href="${esc(wa)}" target="_blank"
                    style="background:gold;color:black;padding:10px 12px;border-radius:10px;text-decoration:none;font-weight:900;">
                    Abrir WhatsApp
-                 </a>`
-              : ""
-          }
+                 </a>` : ""}
           <a href="/clientes" style="color:gold;text-decoration:none;font-weight:900;padding:10px 0;">← Voltar</a>
         </div>
-
         <div style="opacity:.75;">Obs: ${esc(cliente.observacoes || "-")}</div>
       </div>
 
@@ -501,11 +490,10 @@ app.get("/clientes/:id", requireLogin, async (req, res) => {
       </table>
     </div>
   `;
-
   res.send(layout("Cliente", conteudo));
 });
 
-// ===== FINANCEIRO (EXCLUIR) =====
+// ===== FINANCEIRO (COM EXPORT CSV) =====
 app.get("/financeiro", requireLogin, async (req, res) => {
   const mesParam = String(req.query.mes || "").trim();
   const { start: ini, end: fim, key: mesKey } = monthRangeFromKey(mesParam || monthKeyFromDate(new Date()));
@@ -514,36 +502,31 @@ app.get("/financeiro", requireLogin, async (req, res) => {
   const totalDespesas = despesas.reduce((t, d) => t + Number(d.valor || 0), 0);
 
   const pedidosMes = await Pedido.find({ criadoEm: { $gte: ini, $lt: fim } });
-  const faturamentoMes = pedidosMes
-    .filter((p) => p.status === "Pago")
-    .reduce((t, p) => t + Number(p.valor || 0), 0);
-
+  const faturamentoMes = pedidosMes.filter((p) => p.status === "Pago").reduce((t, p) => t + Number(p.valor || 0), 0);
   const lucro = faturamentoMes - totalDespesas;
 
   const linhas = despesas
-    .map((d) => {
-      return `
-        <tr>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(fmtDateBR(d.data))}</td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(d.categoria || "Geral")}</td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(d.descricao)}</td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${money(d.valor)}</td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
-            <form method="POST" action="/despesa/${d._id}/delete?mes=${encodeURIComponent(mesKey)}"
-              onsubmit="return confirm('Excluir esta despesa?');">
-              <button style="background:#222;color:#fff;padding:8px 10px;border:1px solid rgba(255,215,0,.25);border-radius:10px;cursor:pointer;">
-                Excluir
-              </button>
-            </form>
-          </td>
-        </tr>
-      `;
-    })
+    .map((d) => `
+      <tr>
+        <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(fmtDateBR(d.data))}</td>
+        <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(d.categoria || "Geral")}</td>
+        <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(d.descricao)}</td>
+        <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${money(d.valor)}</td>
+        <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
+          <form method="POST" action="/despesa/${d._id}/delete?mes=${encodeURIComponent(mesKey)}"
+            onsubmit="return confirm('Excluir esta despesa?');">
+            <button style="background:#222;color:#fff;padding:8px 10px;border:1px solid rgba(255,215,0,.25);border-radius:10px;cursor:pointer;">
+              Excluir
+            </button>
+          </form>
+        </td>
+      </tr>
+    `)
     .join("");
 
   const conteudo = `
     <h2 style="color:gold;margin:0 0 8px;">Financeiro</h2>
-    ${monthOptionsHTML(mesKey, "/financeiro", "")}
+    ${monthControlsHTML({ selectedKey: mesKey, basePath: "/financeiro", showPdf: true, showCsvPedidos: true, showCsvDespesas: true })}
 
     <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-width:920px;">
       <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
@@ -562,44 +545,31 @@ app.get("/financeiro", requireLogin, async (req, res) => {
 
     <div style="margin-top:16px;border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;max-width:560px;">
       <h3 style="margin:0 0 10px;color:gold;font-size:16px;">Adicionar despesa</h3>
-
       <form method="POST" action="/financeiro/despesa?mes=${encodeURIComponent(mesKey)}">
         <div style="margin-bottom:10px;">
           <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Descrição</div>
-          <input name="descricao" placeholder="Ex: Papel couchê 170g" required
+          <input name="descricao" required
             style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
         </div>
-
         <div style="margin-bottom:10px;">
           <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Categoria</div>
           <select name="categoria"
             style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-            <option>Geral</option>
-            <option>Papel</option>
-            <option>Tinta</option>
-            <option>Material</option>
-            <option>Energia</option>
-            <option>Terceiros</option>
-            <option>Frete</option>
+            <option>Geral</option><option>Papel</option><option>Tinta</option><option>Material</option>
+            <option>Energia</option><option>Terceiros</option><option>Frete</option>
           </select>
         </div>
-
         <div style="margin-bottom:10px;">
           <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Valor</div>
-          <input name="valor" placeholder="Ex: 120,00" required
+          <input name="valor" required
             style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
         </div>
-
         <div style="margin-bottom:14px;">
           <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Data</div>
           <input name="data" placeholder="dd/mm/aaaa (opcional)"
             style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-          <div style="opacity:.6;font-size:12px;margin-top:6px;">Se deixar vazio, usa a data de hoje.</div>
         </div>
-
-        <button style="background:gold;color:black;padding:10px 16px;border:none;border-radius:10px;font-weight:700;">
-          Salvar despesa
-        </button>
+        <button style="background:gold;color:black;padding:10px 16px;border:none;border-radius:10px;font-weight:700;">Salvar despesa</button>
       </form>
     </div>
 
@@ -621,17 +591,13 @@ app.get("/financeiro", requireLogin, async (req, res) => {
       </table>
     </div>
   `;
-
   res.send(layout("Financeiro", conteudo));
 });
 
 app.post("/financeiro/despesa", requireLogin, async (req, res) => {
   const { descricao, categoria, valor, data } = req.body;
-
   const v = parseMoneyBR(valor);
-  if (!Number.isFinite(v)) {
-    return res.send(layout("Erro", `<p>Valor inválido. <a style="color:gold" href="/financeiro">Voltar</a></p>`));
-  }
+  if (!Number.isFinite(v)) return res.send(layout("Erro", `<p>Valor inválido. <a style="color:gold" href="/financeiro">Voltar</a></p>`));
 
   let d = new Date();
   const rawDate = String(data || "").trim();
@@ -657,39 +623,24 @@ app.post("/despesa/:id/delete", requireLogin, async (req, res) => {
   return res.redirect(mes ? `/financeiro?mes=${encodeURIComponent(mes)}` : "/financeiro");
 });
 
-// ===== DASHBOARD (BUSCA + STATUS + EXCLUIR + LINK PARA TELA DO PEDIDO) =====
+// ===== DASHBOARD (QUADRO PENDENTES/PAGOS + EXPORT CSV PEDIDOS) =====
 app.get("/dashboard", requireLogin, async (req, res) => {
   const mesParam = String(req.query.mes || "").trim();
   const { start: ini, end: fim, key: mesKey } = monthRangeFromKey(mesParam || monthKeyFromDate(new Date()));
-
   const q = String(req.query.q || "").trim();
 
   const pedidosMes = await Pedido.find({ criadoEm: { $gte: ini, $lt: fim } });
   const despesasMes = await Despesa.find({ data: { $gte: ini, $lt: fim } });
 
-  const faturamentoMes = pedidosMes
-    .filter((p) => p.status === "Pago")
-    .reduce((total, p) => total + Number(p.valor || 0), 0);
-
+  const faturamentoMes = pedidosMes.filter((p) => p.status === "Pago").reduce((t, p) => t + Number(p.valor || 0), 0);
   const totalDespesas = despesasMes.reduce((t, d) => t + Number(d.valor || 0), 0);
   const lucro = faturamentoMes - totalDespesas;
 
-  // Lista geral (últimos pedidos), com busca opcional:
-  const baseListQuery = q
-    ? {
-        $or: [
-          // busca por número digitando "12" etc (vai achar dentro do numero quando virar string)
-          { produto: { $regex: q, $options: "i" } },
-          { status: { $regex: q, $options: "i" } },
-        ],
-      }
-    : {};
-
-  // Para buscar por cliente também, fazemos populate e filtramos em memória (simples e suficiente)
-  let pedidosLista = await Pedido.find(baseListQuery)
+  // Busca na lista geral
+  let pedidosLista = await Pedido.find()
     .populate("clienteId")
     .sort({ criadoEm: -1 })
-    .limit(120);
+    .limit(150);
 
   if (q) {
     const qlow = q.toLowerCase();
@@ -704,14 +655,34 @@ app.get("/dashboard", requireLogin, async (req, res) => {
     pedidosLista = pedidosLista.slice(0, 80);
   }
 
-  const filtroMes = monthOptionsHTML(mesKey, "/dashboard", q);
+  // QUADRO (usando a lista geral atual)
+  const pendentes = pedidosLista.filter((p) => STATUS_PENDENTES.has(p.status));
+  const pagos = pedidosLista.filter((p) => STATUS_PAGOS.has(p.status));
+
   const busca = searchBoxHTML({ basePath: "/dashboard", q, extraQuery: { mes: mesKey } });
 
-  const linhas = pedidosLista
+  const rowsList = (arr) =>
+    arr
+      .map((p) => {
+        const num = String(p.numero).padStart(4, "0");
+        const clienteNome = p.clienteId?.nome || "-";
+        return `
+          <div style="border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:10px;margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+              <a href="/pedido/${p._id}" style="color:gold;text-decoration:none;font-weight:900;">#${esc(num)}</a>
+              <div style="opacity:.85">${esc(p.status)}</div>
+            </div>
+            <div style="opacity:.9;margin-top:6px;"><b>${esc(clienteNome)}</b> — ${esc(p.produto)}</div>
+            <div style="opacity:.85;margin-top:4px;">R$ ${money(p.valor)}</div>
+          </div>
+        `;
+      })
+      .join("") || `<div style="opacity:.7">Nada aqui.</div>`;
+
+  const linhasTabela = pedidosLista
     .map((p) => {
       const num = String(p.numero).padStart(4, "0");
       const clienteNome = p.clienteId?.nome ? p.clienteId.nome : "-";
-
       return `
         <tr>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
@@ -721,7 +692,6 @@ app.get("/dashboard", requireLogin, async (req, res) => {
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(p.produto)}</td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${money(p.valor)}</td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(p.status)}</td>
-
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
               <form method="POST" action="/pedido/${p._id}/status?mes=${encodeURIComponent(mesKey)}&q=${encodeURIComponent(q)}"
@@ -750,7 +720,7 @@ app.get("/dashboard", requireLogin, async (req, res) => {
 
   const conteudo = `
     <h2 style="color:gold;margin:0 0 8px;">Dashboard</h2>
-    ${filtroMes}
+    ${monthControlsHTML({ selectedKey: mesKey, basePath: "/dashboard", q, showPdf: true, showCsvPedidos: true, showCsvDespesas: false })}
     ${busca}
 
     <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-width:920px;">
@@ -768,6 +738,18 @@ app.get("/dashboard", requireLogin, async (req, res) => {
       </div>
     </div>
 
+    <h3 style="color:gold;margin:18px 0 10px;">Quadro</h3>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
+        <div style="color:gold;font-weight:900;margin-bottom:10px;">Pendentes</div>
+        ${rowsList(pendentes)}
+      </div>
+      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
+        <div style="color:gold;font-weight:900;margin-bottom:10px;">Pagos / Finalizados</div>
+        ${rowsList(pagos)}
+      </div>
+    </div>
+
     <h3 style="color:gold;margin:18px 0 10px;">Pedidos (últimos) ${q ? `— buscando: "${esc(q)}"` : ""}</h3>
     <div style="overflow:auto;border:1px solid rgba(255,215,0,.18);border-radius:14px;">
       <table style="width:100%;border-collapse:collapse;min-width:1100px;">
@@ -782,26 +764,23 @@ app.get("/dashboard", requireLogin, async (req, res) => {
           </tr>
         </thead>
         <tbody>
-          ${linhas || `<tr><td style="padding:10px;" colspan="6">Nenhum pedido encontrado.</td></tr>`}
+          ${linhasTabela || `<tr><td style="padding:10px;" colspan="6">Nenhum pedido encontrado.</td></tr>`}
         </tbody>
       </table>
     </div>
-
-    <div style="opacity:.65;font-size:12px;margin-top:8px;">
-      Obs: o filtro de mês muda os números (cards). A lista é geral (últimos pedidos).
-    </div>
   `;
-
   res.send(layout("Dashboard", conteudo));
 });
 
-// ===== ATUALIZAR STATUS / EXCLUIR PEDIDO =====
+// ===== STATUS / DELETE =====
 app.post("/pedido/:id/status", requireLogin, async (req, res) => {
   const novoStatus = String(req.body.status || "").trim();
-  if (!STATUS_LIST.includes(novoStatus)) {
-    return res.send(layout("Erro", `<p>Status inválido. <a style="color:gold" href="/dashboard">Voltar</a></p>`));
-  }
+  if (!STATUS_LIST.includes(novoStatus)) return res.send(layout("Erro", `<p>Status inválido. <a style="color:gold" href="/dashboard">Voltar</a></p>`));
+
   await Pedido.findByIdAndUpdate(req.params.id, { status: novoStatus });
+
+  const from = String(req.query.from || "");
+  if (from === "pedido") return res.redirect(`/pedido/${req.params.id}`);
 
   const mes = String(req.query.mes || "").trim();
   const q = String(req.query.q || "").trim();
@@ -814,6 +793,9 @@ app.post("/pedido/:id/status", requireLogin, async (req, res) => {
 app.post("/pedido/:id/delete", requireLogin, async (req, res) => {
   await Pedido.findByIdAndDelete(req.params.id);
 
+  const from = String(req.query.from || "");
+  if (from === "pedido") return res.redirect("/dashboard");
+
   const mes = String(req.query.mes || "").trim();
   const q = String(req.query.q || "").trim();
   const qs = new URLSearchParams();
@@ -822,16 +804,89 @@ app.post("/pedido/:id/delete", requireLogin, async (req, res) => {
   return res.redirect(`/dashboard${qs.toString() ? "?" + qs.toString() : ""}`);
 });
 
-// ===== TELA DO PEDIDO (DETALHE + ANOTAÇÕES + STATUS + EXCLUIR) =====
-app.get("/pedido/:id", requireLogin, async (req, res) => {
-  const pedido = await Pedido.findById(req.params.id).populate("clienteId");
-  if (!pedido) {
-    return res.send(layout("Pedido", `<p>Pedido não encontrado. <a style="color:gold" href="/dashboard">Voltar</a></p>`));
+// ===== NOVO PEDIDO =====
+app.get("/novo", requireLogin, async (req, res) => {
+  const clientes = await Cliente.find().sort({ nome: 1 });
+  if (!clientes.length) {
+    return res.send(layout("Novo Pedido", `<p>Cadastre um cliente primeiro. <a style="color:gold" href="/clientes">Ir para clientes</a></p>`));
   }
 
+  const options = clientes
+    .map((c) => `<option value="${c._id}">${esc(c.nome)} ${c.whatsapp ? "— " + esc(c.whatsapp) : ""}</option>`)
+    .join("");
+
+  res.send(
+    layout(
+      "Novo Pedido",
+      `
+      <h2 style="color:gold;margin:0 0 12px;">Novo Pedido</h2>
+      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;max-width:560px;">
+        <form method="POST" action="/pedido">
+          <div style="margin-bottom:10px;">
+            <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Cliente</div>
+            <select name="clienteId" required
+              style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+              ${options}
+            </select>
+          </div>
+
+          <div style="margin-bottom:10px;">
+            <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Produto</div>
+            <input name="produto" required
+              style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+          </div>
+
+          <div style="margin-bottom:10px;">
+            <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Valor</div>
+            <input name="valor" required
+              style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+          </div>
+
+          <div style="margin-bottom:14px;">
+            <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Status</div>
+            <select name="status"
+              style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+              ${statusOptions("Orçamento")}
+            </select>
+          </div>
+
+          <button style="background:gold;color:black;padding:10px 16px;border:none;border-radius:10px;font-weight:700;">
+            Salvar Pedido
+          </button>
+        </form>
+      </div>
+      `
+    )
+  );
+});
+
+app.post("/pedido", requireLogin, async (req, res) => {
+  const { clienteId, produto, valor, status } = req.body;
+
+  const numero = await getNextNumero();
+  const v = parseMoneyBR(valor);
+  if (!Number.isFinite(v)) return res.send(layout("Erro", `<p>Valor inválido. <a style="color:gold" href="/novo">Voltar</a></p>`));
+
+  const st = String(status || "").trim();
+  if (!STATUS_LIST.includes(st)) return res.send(layout("Erro", `<p>Status inválido. <a style="color:gold" href="/novo">Voltar</a></p>`));
+
+  await Pedido.create({
+    numero,
+    clienteId: clienteId || null,
+    produto: String(produto || "").trim(),
+    valor: v,
+    status: st,
+  });
+
+  res.redirect("/dashboard");
+});
+
+// ===== TELA DO PEDIDO + RECIBO PDF =====
+app.get("/pedido/:id", requireLogin, async (req, res) => {
+  const pedido = await Pedido.findById(req.params.id).populate("clienteId");
+  if (!pedido) return res.send(layout("Pedido", `<p>Pedido não encontrado. <a style="color:gold" href="/dashboard">Voltar</a></p>`));
+
   const num = String(pedido.numero || 0).padStart(4, "0");
-  const clienteNome = pedido.clienteId?.nome || "-";
-  const clienteId = pedido.clienteId?._id || "";
   const wa = waLinkBR(pedido.clienteId?.whatsapp || "");
 
   const conteudo = `
@@ -840,27 +895,20 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
         <h2 style="color:gold;margin:0 0 6px;">Pedido #${esc(num)}</h2>
         <div style="opacity:.75;font-size:12px;margin-bottom:10px;">Criado em: ${esc(fmtDateBR(pedido.criadoEm))}</div>
 
-        <div style="margin-bottom:8px;"><b>Cliente:</b>
-          ${
-            clienteId
-              ? `<a href="/clientes/${clienteId}" style="color:gold;text-decoration:none;font-weight:900;">${esc(clienteNome)}</a>`
-              : esc(clienteNome)
-          }
-        </div>
-
+        <div style="margin-bottom:8px;"><b>Cliente:</b> ${esc(pedido.clienteId?.nome || "-")}</div>
         <div style="margin-bottom:8px;"><b>Produto:</b> ${esc(pedido.produto)}</div>
         <div style="margin-bottom:8px;"><b>Valor:</b> R$ ${money(pedido.valor)}</div>
 
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;">
           <a href="/dashboard" style="color:gold;text-decoration:none;font-weight:900;">← Voltar</a>
-          ${
-            wa
-              ? `<a href="${esc(wa)}" target="_blank"
-                   style="background:gold;color:black;padding:10px 12px;border-radius:10px;text-decoration:none;font-weight:900;">
-                   WhatsApp
-                 </a>`
-              : ""
-          }
+          ${wa ? `<a href="${esc(wa)}" target="_blank"
+                    style="background:gold;color:black;padding:10px 12px;border-radius:10px;text-decoration:none;font-weight:900;">
+                    WhatsApp
+                  </a>` : ""}
+          <a href="/pedido/${pedido._id}/recibo.pdf"
+             style="background:#222;color:#fff;padding:10px 12px;border-radius:10px;text-decoration:none;font-weight:900;border:1px solid rgba(255,215,0,.25);">
+             Baixar recibo (PDF)
+          </a>
         </div>
       </div>
 
@@ -890,13 +938,11 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
 
     <div style="margin-top:12px;border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
       <h3 style="color:gold;margin:0 0 10px;">Anotações</h3>
-
       <form method="POST" action="/pedido/${pedido._id}/anotacoes">
-        <textarea name="anotacoes" rows="6" placeholder="Ex: arte aprovada / retirar amanhã / combinado pagamento..."
+        <textarea name="anotacoes" rows="6"
           style="width:100%;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;resize:vertical;">${esc(
             pedido.anotacoes || ""
           )}</textarea>
-
         <div style="margin-top:10px;">
           <button style="background:gold;color:black;padding:10px 14px;border:none;border-radius:10px;font-weight:900;cursor:pointer;">
             Salvar anotações
@@ -905,7 +951,6 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
       </form>
     </div>
   `;
-
   res.send(layout(`Pedido #${num}`, conteudo));
 });
 
@@ -915,96 +960,45 @@ app.post("/pedido/:id/anotacoes", requireLogin, async (req, res) => {
   res.redirect(`/pedido/${req.params.id}`);
 });
 
-// ===== NOVO PEDIDO =====
-app.get("/novo", requireLogin, async (req, res) => {
-  const clientes = await Cliente.find().sort({ nome: 1 });
+// ===== RECIBO PDF (DO PEDIDO) =====
+app.get("/pedido/:id/recibo.pdf", requireLogin, async (req, res) => {
+  const pedido = await Pedido.findById(req.params.id).populate("clienteId");
+  if (!pedido) return res.status(404).send("Pedido não encontrado");
 
-  if (!clientes.length) {
-    const conteudo = `
-      <h2 style="color:gold;margin:0 0 10px;">Novo Pedido</h2>
-      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;max-width:560px;">
-        <p style="margin:0 0 10px;">Você ainda não cadastrou nenhum cliente.</p>
-        <a href="/clientes" style="color:gold;text-decoration:none;font-weight:700;">Cadastrar cliente agora</a>
-      </div>
-    `;
-    return res.send(layout("Novo Pedido", conteudo));
+  const num = String(pedido.numero || 0).padStart(4, "0");
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="recibo-pedido-${num}.pdf"`);
+
+  const doc = new PDFDocument({ size: "A4", margin: 50 });
+  doc.pipe(res);
+
+  doc.fontSize(18).text("Atlas Creative - Comprovante de Pedido");
+  doc.moveDown(0.5);
+  doc.fontSize(12).text(`Pedido: #${num}`);
+  doc.text(`Data: ${fmtDateBR(pedido.criadoEm)}`);
+  doc.text(`Cliente: ${pedido.clienteId?.nome || "-"}`);
+  doc.text(`WhatsApp: ${pedido.clienteId?.whatsapp || "-"}`);
+  doc.moveDown();
+
+  doc.fontSize(12).text(`Produto: ${pedido.produto}`);
+  doc.text(`Valor: R$ ${money(pedido.valor)}`);
+  doc.text(`Status: ${pedido.status}`);
+  doc.moveDown();
+
+  if (pedido.anotacoes) {
+    doc.fontSize(12).text("Observações:", { underline: true });
+    doc.moveDown(0.3);
+    doc.fontSize(11).text(pedido.anotacoes);
   }
 
-  const options = clientes
-    .map((c) => `<option value="${c._id}">${esc(c.nome)} ${c.whatsapp ? "— " + esc(c.whatsapp) : ""}</option>`)
-    .join("");
+  doc.moveDown(2);
+  doc.fontSize(10).text("Obrigado pela preferência!", { align: "left" });
 
-  const conteudo = `
-    <h2 style="color:gold;margin:0 0 12px;">Novo Pedido</h2>
-
-    <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;max-width:560px;">
-      <form method="POST" action="/pedido">
-
-        <div style="margin-bottom:10px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Cliente</div>
-          <select name="clienteId" required
-            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-            ${options}
-          </select>
-        </div>
-
-        <div style="margin-bottom:10px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Produto</div>
-          <input name="produto" placeholder="Ex: Cartão de visita" required
-            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-        </div>
-
-        <div style="margin-bottom:10px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Valor</div>
-          <input name="valor" placeholder="Ex: 35,00" required
-            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-        </div>
-
-        <div style="margin-bottom:14px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Status</div>
-          <select name="status"
-            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-            ${statusOptions("Orçamento")}
-          </select>
-        </div>
-
-        <button style="background:gold;color:black;padding:10px 16px;border:none;border-radius:10px;font-weight:700;">
-          Salvar Pedido
-        </button>
-      </form>
-    </div>
-  `;
-
-  res.send(layout("Novo Pedido", conteudo));
+  doc.end();
 });
 
-app.post("/pedido", requireLogin, async (req, res) => {
-  const { clienteId, produto, valor, status } = req.body;
-
-  const numero = await getNextNumero();
-
-  const v = parseMoneyBR(valor);
-  if (!Number.isFinite(v)) {
-    return res.send(layout("Erro", `<p>Valor inválido. <a style="color:gold" href="/novo">Voltar</a></p>`));
-  }
-
-  const st = String(status || "").trim();
-  if (!STATUS_LIST.includes(st)) {
-    return res.send(layout("Erro", `<p>Status inválido. <a style="color:gold" href="/novo">Voltar</a></p>`));
-  }
-
-  await Pedido.create({
-    numero,
-    clienteId: clienteId || null,
-    produto: String(produto || "").trim(),
-    valor: v,
-    status: st,
-  });
-
-  res.redirect("/dashboard");
-});
-
-// ===== RELATÓRIO PDF =====
+// ===== RELATÓRIO PDF (MÊS) =====
 app.get("/relatorio", requireLogin, async (req, res) => {
   const mesParam = String(req.query.mes || "").trim();
   const { start: ini, end: fim, key: mesKey } = monthRangeFromKey(mesParam || monthKeyFromDate(new Date()));
@@ -1012,10 +1006,7 @@ app.get("/relatorio", requireLogin, async (req, res) => {
   const pedidosMes = await Pedido.find({ criadoEm: { $gte: ini, $lt: fim } }).populate("clienteId").sort({ criadoEm: 1 });
   const despesasMes = await Despesa.find({ data: { $gte: ini, $lt: fim } }).sort({ data: 1 });
 
-  const faturamento = pedidosMes
-    .filter((p) => p.status === "Pago")
-    .reduce((t, p) => t + Number(p.valor || 0), 0);
-
+  const faturamento = pedidosMes.filter((p) => p.status === "Pago").reduce((t, p) => t + Number(p.valor || 0), 0);
   const despesas = despesasMes.reduce((t, d) => t + Number(d.valor || 0), 0);
   const lucro = faturamento - despesas;
 
@@ -1046,9 +1037,7 @@ app.get("/relatorio", requireLogin, async (req, res) => {
   pedidosMes.forEach((p) => {
     const num = String(p.numero).padStart(4, "0");
     const cli = p.clienteId?.nome ? p.clienteId.nome : "-";
-    doc.text(
-      `#${num} | ${fmtDateBR(p.criadoEm)} | ${cli} | ${p.produto} | R$ ${money(p.valor)} | ${p.status}`
-    );
+    doc.text(`#${num} | ${fmtDateBR(p.criadoEm)} | ${cli} | ${p.produto} | R$ ${money(p.valor)} | ${p.status}`);
   });
 
   doc.moveDown();
@@ -1064,5 +1053,71 @@ app.get("/relatorio", requireLogin, async (req, res) => {
   doc.end();
 });
 
+// ===== EXPORT CSV =====
+function csvEscape(v) {
+  const s = String(v ?? "");
+  if (s.includes('"') || s.includes(",") || s.includes("\n")) {
+    return `"${s.replaceAll('"', '""')}"`;
+  }
+  return s;
+}
+
+app.get("/export/pedidos.csv", requireLogin, async (req, res) => {
+  const mesParam = String(req.query.mes || "").trim();
+  const { start: ini, end: fim, key: mesKey } = monthRangeFromKey(mesParam || monthKeyFromDate(new Date()));
+
+  const pedidosMes = await Pedido.find({ criadoEm: { $gte: ini, $lt: fim } }).populate("clienteId").sort({ criadoEm: 1 });
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="pedidos-${mesKey}.csv"`);
+
+  const header = ["numero", "data", "cliente", "whatsapp", "produto", "valor", "status", "anotacoes"];
+  const lines = [header.join(",")];
+
+  pedidosMes.forEach((p) => {
+    lines.push(
+      [
+        p.numero,
+        fmtDateBR(p.criadoEm),
+        p.clienteId?.nome || "",
+        p.clienteId?.whatsapp || "",
+        p.produto,
+        String(p.valor).replace(".", ","),
+        p.status,
+        (p.anotacoes || "").replace(/\r?\n/g, " "),
+      ].map(csvEscape).join(",")
+    );
+  });
+
+  res.send(lines.join("\n"));
+});
+
+app.get("/export/despesas.csv", requireLogin, async (req, res) => {
+  const mesParam = String(req.query.mes || "").trim();
+  const { start: ini, end: fim, key: mesKey } = monthRangeFromKey(mesParam || monthKeyFromDate(new Date()));
+
+  const despesasMes = await Despesa.find({ data: { $gte: ini, $lt: fim } }).sort({ data: 1 });
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="despesas-${mesKey}.csv"`);
+
+  const header = ["data", "categoria", "descricao", "valor"];
+  const lines = [header.join(",")];
+
+  despesasMes.forEach((d) => {
+    lines.push(
+      [
+        fmtDateBR(d.data),
+        d.categoria || "",
+        d.descricao,
+        String(d.valor).replace(".", ","),
+      ].map(csvEscape).join(",")
+    );
+  });
+
+  res.send(lines.join("\n"));
+});
+
+// ===== START =====
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Servidor rodando"));
