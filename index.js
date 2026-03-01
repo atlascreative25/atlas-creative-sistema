@@ -3,9 +3,13 @@ const session = require("express-session");
 const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
 const PDFDocument = require("pdfkit");
+const path = require("path");
 
 const app = express();
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// ====== PWA: servir /public ======
+app.use(express.static(path.join(__dirname, "public")));
 
 app.use(
   session({
@@ -191,7 +195,7 @@ function csvEscape(v) {
   return s;
 }
 
-// ===== LAYOUT NOVO =====
+// ===== LAYOUT NOVO + PWA HEAD =====
 function layout(titulo, conteudo) {
   return `
   <html>
@@ -199,6 +203,12 @@ function layout(titulo, conteudo) {
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <title>${esc(titulo)}</title>
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#d7b25a">
+    <link rel="apple-touch-icon" href="/icon-192.png">
+
     <style>
       :root{
         --bg:#070707;
@@ -312,6 +322,13 @@ function layout(titulo, conteudo) {
     <div class="container">
       ${conteudo}
     </div>
+
+    <!-- PWA: registrar service worker -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js');
+      }
+    </script>
   </body>
   </html>
   `;
@@ -392,6 +409,17 @@ const EntregaSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// ===== MATERIAIS (ESTOQUE AUTOMÁTICO) =====
+const PedidoMaterialSchema = new mongoose.Schema(
+  {
+    itemId: { type: mongoose.Schema.Types.ObjectId, ref: "EstoqueItem", required: true },
+    nome: { type: String, required: true },
+    unidade: { type: String, default: "un" },
+    quantidade: { type: Number, required: true },
+  },
+  { _id: true }
+);
+
 const PedidoSchema = new mongoose.Schema(
   {
     numero: { type: Number, required: true, unique: true },
@@ -409,6 +437,10 @@ const PedidoSchema = new mongoose.Schema(
     arquivado: { type: Boolean, default: false },
     checklist: { type: ChecklistSchema, default: () => ({}) },
     entrega: { type: EntregaSchema, default: () => ({}) },
+
+    // estoque automático
+    materiais: { type: [PedidoMaterialSchema], default: [] },
+    estoqueBaixado: { type: Boolean, default: false },
 
     criadoEm: { type: Date, default: Date.now },
   },
@@ -461,6 +493,39 @@ const EstoqueMovSchema = new mongoose.Schema(
 
 const EstoqueItem = mongoose.model("EstoqueItem", EstoqueItemSchema);
 const EstoqueMov = mongoose.model("EstoqueMov", EstoqueMovSchema);
+
+// ===== FUNÇÃO: BAIXAR ESTOQUE UMA VEZ =====
+async function baixarEstoqueDoPedidoSePreciso(pedido, novoStatus) {
+  const deveBaixar = (novoStatus === "Em produção" || novoStatus === "Entregue");
+  if (!deveBaixar) return;
+
+  if (pedido.estoqueBaixado) return; // já baixou uma vez
+  if (!pedido.materiais || pedido.materiais.length === 0) return; // sem materiais, não faz nada
+
+  for (const mat of pedido.materiais) {
+    const item = await EstoqueItem.findById(mat.itemId);
+    if (!item) continue;
+
+    let novaQtd = Number(item.quantidade || 0) - Number(mat.quantidade || 0);
+    if (!Number.isFinite(novaQtd)) novaQtd = Number(item.quantidade || 0);
+    if (novaQtd < 0) novaQtd = 0;
+
+    await EstoqueMov.create({
+      itemId: item._id,
+      tipo: "Saída",
+      quantidade: Number(mat.quantidade || 0),
+      motivo: `Uso no pedido (#${String(pedido.numero).padStart(4, "0")})`,
+      pedidoNumero: pedido.numero,
+    });
+
+    item.quantidade = novaQtd;
+    item.atualizadoEm = new Date();
+    await item.save();
+  }
+
+  pedido.estoqueBaixado = true;
+  await pedido.save();
+}
 
 // ===== AUTH =====
 app.get("/", (req, res) => {
@@ -703,196 +768,6 @@ app.post("/clientes", requireLogin, async (req, res) => {
     observacoes: String(observacoes || "").trim(),
   });
   res.redirect("/clientes");
-});
-
-// ===== TELA DO CLIENTE =====
-app.get("/clientes/:id", requireLogin, async (req, res) => {
-  const cliente = await Cliente.findById(req.params.id);
-  if (!cliente) return res.send(layout("Cliente", `<div class="card">Cliente não encontrado. <a href="/clientes">Voltar</a></div>`));
-
-  const pedidos = await Pedido.find({ clienteId: cliente._id }).sort({ criadoEm: -1 });
-
-  const totalValor = pedidos.filter((p) => p.status !== "Cancelado").reduce((t, p) => t + Number(p.valor || 0), 0);
-  const totalSinal = pedidos.filter((p) => p.status !== "Cancelado").reduce((t, p) => t + Number(p.sinal || 0), 0);
-  const totalSaldo = pedidos
-    .filter((p) => p.status !== "Cancelado")
-    .reduce((t, p) => t + saldoPedido(p.valor, p.sinal), 0);
-
-  const wa = waLinkBR(cliente.whatsapp);
-
-  const linhas = pedidos
-    .map((p) => {
-      const num = String(p.numero).padStart(4, "0");
-      const badge = p.arquivado ? `<span class="pill">Arquivado</span>` : "";
-      const tipo = p.tipoProduto ? `${p.tipoProduto} — ` : "";
-      return `
-        <tr>
-          <td><a href="/pedido/${p._id}" style="font-weight:900;color:var(--gold2)">#${esc(num)}</a> ${badge}</td>
-          <td>${esc(tipo + p.produto)}</td>
-          <td>R$ ${money(p.valor)}</td>
-          <td>R$ ${money(p.sinal || 0)}</td>
-          <td>R$ ${money(saldoPedido(p.valor, p.sinal))}</td>
-          <td>${esc(p.status)}</td>
-        </tr>
-      `;
-    })
-    .join("");
-
-  const conteudo = `
-    <div class="row" style="justify-content:space-between;margin-bottom:10px;">
-      <div>
-        <h2 class="h1">${esc(cliente.nome)}</h2>
-        <div class="muted">WhatsApp: ${esc(cliente.whatsapp || "-")} • Obs: ${esc(cliente.observacoes || "-")}</div>
-      </div>
-      <div class="row">
-        <a class="btn" href="/clientes">← Voltar</a>
-        ${wa ? `<a class="btn btn-gold" href="${esc(wa)}" target="_blank">Abrir WhatsApp</a>` : ""}
-        <a class="btn" href="/clientes/${cliente._id}/relatorio.pdf">PDF do Cliente</a>
-        <a class="btn" href="/clientes/${cliente._id}/pedidos.csv">CSV do Cliente</a>
-      </div>
-    </div>
-
-    <div class="grid grid-3">
-      <div class="card kpi">
-        <div class="label">Total (valor)</div>
-        <div class="value">R$ ${money(totalValor)}</div>
-      </div>
-      <div class="card kpi">
-        <div class="label">Total (sinal)</div>
-        <div class="value">R$ ${money(totalSinal)}</div>
-      </div>
-      <div class="card kpi">
-        <div class="label">Total (saldo)</div>
-        <div class="value">R$ ${money(totalSaldo)}</div>
-      </div>
-    </div>
-
-    <div class="spacer"></div>
-
-    <div class="card">
-      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Pedidos do cliente</div>
-      <div class="tablewrap">
-        <table style="min-width:980px;">
-          <thead>
-            <tr>
-              <th>Pedido</th>
-              <th>Produto</th>
-              <th>Valor</th>
-              <th>Sinal</th>
-              <th>Saldo</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${linhas || `<tr><td colspan="6" class="muted" style="padding:12px;">Nenhum pedido para este cliente ainda.</td></tr>`}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `;
-
-  res.send(layout("Cliente", conteudo));
-});
-
-// CSV cliente
-app.get("/clientes/:id/pedidos.csv", requireLogin, async (req, res) => {
-  const cliente = await Cliente.findById(req.params.id);
-  if (!cliente) return res.status(404).send("Cliente não encontrado");
-
-  const pedidos = await Pedido.find({ clienteId: cliente._id }).sort({ criadoEm: 1 });
-
-  res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", `attachment; filename="cliente-${cliente._id}-pedidos.csv"`);
-
-  const header = [
-    "numero","data","cliente","whatsapp","tipoProduto","produto",
-    "valor","sinal","saldo","status","arquivado",
-    "entrega_tipo","entrega_data","entrega_quem","entrega_observacao",
-    "arteRecebida","arteAprovada","impresso","cortado","entregue",
-    "anotacoes"
-  ];
-  const lines = [header.join(",")];
-
-  pedidos.forEach((p) => {
-    const ck = p.checklist || {};
-    const e = p.entrega || {};
-    lines.push(
-      [
-        p.numero,
-        fmtDateBR(p.criadoEm),
-        cliente.nome,
-        cliente.whatsapp || "",
-        p.tipoProduto || "",
-        p.produto || "",
-        String(p.valor).replace(".", ","),
-        String(p.sinal || 0).replace(".", ","),
-        String(saldoPedido(p.valor, p.sinal)).replace(".", ","),
-        p.status,
-        p.arquivado ? "Sim" : "Não",
-        e.tipo || "",
-        fmtDateBR(e.data),
-        e.quemRetirou || "",
-        (e.observacao || "").replace(/\r?\n/g, " "),
-        ck.arteRecebida ? "1" : "0",
-        ck.arteAprovada ? "1" : "0",
-        ck.impresso ? "1" : "0",
-        ck.cortado ? "1" : "0",
-        ck.entregue ? "1" : "0",
-        (p.anotacoes || "").replace(/\r?\n/g, " "),
-      ].map(csvEscape).join(",")
-    );
-  });
-
-  res.send(lines.join("\n"));
-});
-
-// PDF cliente
-app.get("/clientes/:id/relatorio.pdf", requireLogin, async (req, res) => {
-  const cliente = await Cliente.findById(req.params.id);
-  if (!cliente) return res.status(404).send("Cliente não encontrado");
-
-  const pedidos = await Pedido.find({ clienteId: cliente._id }).sort({ criadoEm: 1 });
-
-  const totalValor = pedidos.filter((p) => p.status !== "Cancelado").reduce((t, p) => t + Number(p.valor || 0), 0);
-  const totalSinal = pedidos.filter((p) => p.status !== "Cancelado").reduce((t, p) => t + Number(p.sinal || 0), 0);
-  const totalSaldo = pedidos.filter((p) => p.status !== "Cancelado").reduce((t, p) => t + saldoPedido(p.valor, p.sinal), 0);
-
-  res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="cliente-${cliente._id}.pdf"`);
-
-  const doc = new PDFDocument({ size: "A4", margin: 40 });
-  doc.pipe(res);
-
-  doc.fontSize(18).text("Atlas Creative - Relatório do Cliente");
-  doc.moveDown(0.5);
-
-  doc.fontSize(12).text(`Cliente: ${cliente.nome}`);
-  doc.text(`WhatsApp: ${cliente.whatsapp || "-"}`);
-  doc.text(`Gerado em: ${fmtDateBR(new Date())}`);
-  doc.moveDown();
-
-  doc.fontSize(13).text("Resumo", { underline: true });
-  doc.moveDown(0.5);
-  doc.fontSize(12).text(`Total (valor): R$ ${money(totalValor)}`);
-  doc.text(`Total (sinal): R$ ${money(totalSinal)}`);
-  doc.text(`Total (saldo): R$ ${money(totalSaldo)}`);
-  doc.moveDown();
-
-  doc.fontSize(13).text("Pedidos", { underline: true });
-  doc.moveDown(0.5);
-  doc.fontSize(10).text("Pedido | Data | Tipo | Produto | Valor | Sinal | Saldo | Status | Entrega");
-  doc.moveDown(0.3);
-
-  pedidos.forEach((p) => {
-    const num = String(p.numero).padStart(4, "0");
-    doc.text(
-      `#${num} | ${fmtDateBR(p.criadoEm)} | ${p.tipoProduto || "-"} | ${p.produto} | R$ ${money(p.valor)} | R$ ${money(
-        p.sinal || 0
-      )} | R$ ${money(saldoPedido(p.valor, p.sinal))} | ${p.status} | ${entregaResumo(p.entrega)}`
-    );
-  });
-
-  doc.end();
 });
 
 // ===== NOVO PEDIDO =====
@@ -1141,8 +1016,6 @@ app.get("/dashboard", requireLogin, async (req, res) => {
       <h2 class="h1">Dashboard</h2>
       <div class="row">
         <a class="btn" href="${esc(toggleLink)}">${esc(toggleText)}</a>
-        <a class="btn" href="/relatorio?mes=${encodeURIComponent(mesKey)}">Baixar PDF (mês)</a>
-        <a class="btn" href="/export/pedidos.csv?mes=${encodeURIComponent(mesKey)}">Exportar Pedidos (CSV)</a>
       </div>
     </div>
 
@@ -1245,6 +1118,8 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
   const pedido = await Pedido.findById(req.params.id).populate("clienteId");
   if (!pedido) return res.send(layout("Pedido", `<div class="card">Pedido não encontrado. <a href="/dashboard">Voltar</a></div>`));
 
+  const estoqueItens = await EstoqueItem.find().sort({ nome: 1 });
+
   const num = String(pedido.numero || 0).padStart(4, "0");
   const clienteNome = pedido.clienteId?.nome || "Cliente";
   const whatsapp = pedido.clienteId?.whatsapp || "";
@@ -1265,6 +1140,24 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
     status: pedido.status,
   });
   const templatesJSON = JSON.stringify(templates);
+
+  const materiais = pedido.materiais || [];
+  const materiaisLinhas = materiais.map((m) => `
+    <tr>
+      <td>${esc(m.nome)}</td>
+      <td>${esc(String(m.quantidade))} ${esc(m.unidade || "un")}</td>
+      <td>
+        <form method="POST" action="/pedido/${pedido._id}/material/${m._id}/delete" style="margin:0;" onsubmit="return confirm('Remover material do pedido?');">
+          <button class="btn" type="submit">Remover</button>
+        </form>
+      </td>
+    </tr>
+  `).join("");
+
+  const itensOpt = [
+    `<option value="">Selecionar item do estoque...</option>`,
+    ...estoqueItens.map(i => `<option value="${i._id}">${esc(i.nome)} (${esc(String(i.quantidade || 0))} ${esc(i.unidade || "un")})</option>`)
+  ].join("");
 
   const conteudo = `
     <div class="row" style="justify-content:space-between;margin-bottom:10px;">
@@ -1360,6 +1253,11 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
           <button class="btn btn-gold" type="submit">Salvar status</button>
         </form>
 
+        <div class="mini" style="margin-bottom:10px;">
+          Estoque automático: <b style="color:#fff">${pedido.estoqueBaixado ? "Já baixado ✅" : "Ainda não baixado"}</b><br/>
+          (A baixa acontece quando status virar <b>Em produção</b> ou <b>Entregue</b>)
+        </div>
+
         <form method="POST" action="/pedido/${pedido._id}/valores" style="border-top:1px solid rgba(255,255,255,.08);padding-top:12px;">
           <div class="mini" style="margin-bottom:6px;">Editar valor/sinal</div>
           <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
@@ -1410,6 +1308,39 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
     <div class="spacer"></div>
 
     <div class="card">
+      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Materiais usados (estoque)</div>
+
+      <form method="POST" action="/pedido/${pedido._id}/material" class="grid" style="grid-template-columns:2fr 1fr 1fr;gap:10px;">
+        <select class="input" name="itemId" required>${itensOpt}</select>
+        <input class="input" name="quantidade" placeholder="Qtd usada" required>
+        <button class="btn btn-gold" type="submit">Adicionar</button>
+      </form>
+
+      <div class="spacer"></div>
+
+      <div class="tablewrap">
+        <table style="min-width:800px;">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Quantidade</th>
+              <th>Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${materiaisLinhas || `<tr><td colspan="3" class="muted" style="padding:12px;">Nenhum material adicionado ainda.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mini" style="margin-top:10px;">
+        ⚠️ Dica: adicione os materiais antes de colocar o status em <b>Em produção</b> ou <b>Entregue</b>.
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="card">
       <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Checklist</div>
       <form method="POST" action="/pedido/${pedido._id}/checklist" class="grid grid-2">
         ${checklistCheckbox("Arte recebida", "arteRecebida", Boolean(pedido.checklist?.arteRecebida))}
@@ -1437,6 +1368,39 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
   `;
 
   res.send(layout(`Pedido #${num}`, conteudo));
+});
+
+// adicionar material ao pedido
+app.post("/pedido/:id/material", requireLogin, async (req, res) => {
+  const pedido = await Pedido.findById(req.params.id);
+  if (!pedido) return res.redirect("/dashboard");
+
+  const itemId = String(req.body.itemId || "").trim();
+  const qtd = Number(String(req.body.quantidade || "0").replace(",", "."));
+  if (!itemId || !Number.isFinite(qtd) || qtd <= 0) return res.redirect(`/pedido/${pedido._id}`);
+
+  const item = await EstoqueItem.findById(itemId);
+  if (!item) return res.redirect(`/pedido/${pedido._id}`);
+
+  pedido.materiais.push({
+    itemId: item._id,
+    nome: item.nome,
+    unidade: item.unidade || "un",
+    quantidade: qtd,
+  });
+
+  await pedido.save();
+  res.redirect(`/pedido/${pedido._id}`);
+});
+
+// remover material do pedido
+app.post("/pedido/:id/material/:matId/delete", requireLogin, async (req, res) => {
+  const pedido = await Pedido.findById(req.params.id);
+  if (!pedido) return res.redirect("/dashboard");
+
+  pedido.materiais = (pedido.materiais || []).filter(m => String(m._id) !== String(req.params.matId));
+  await pedido.save();
+  res.redirect(`/pedido/${pedido._id}`);
 });
 
 app.post("/pedido/:id/valores", requireLogin, async (req, res) => {
@@ -1468,11 +1432,22 @@ app.post("/pedido/:id/checklist", requireLogin, async (req, res) => {
   res.redirect(`/pedido/${req.params.id}`);
 });
 
+// ✅ status + baixa automática de estoque
 app.post("/pedido/:id/status", requireLogin, async (req, res) => {
   const novoStatus = String(req.body.status || "").trim();
-  if (!STATUS_LIST.includes(novoStatus)) return res.send(layout("Erro", `<div class="card">Status inválido. <a href="/pedido/${req.params.id}">Voltar</a></div>`));
+  if (!STATUS_LIST.includes(novoStatus)) {
+    return res.send(layout("Erro", `<div class="card">Status inválido. <a href="/pedido/${req.params.id}">Voltar</a></div>`));
+  }
 
-  await Pedido.findByIdAndUpdate(req.params.id, { status: novoStatus });
+  const pedido = await Pedido.findById(req.params.id);
+  if (!pedido) return res.redirect("/dashboard");
+
+  pedido.status = novoStatus;
+  await pedido.save();
+
+  // baixa estoque 1x quando entrar em “Em produção” ou “Entregue”
+  await baixarEstoqueDoPedidoSePreciso(pedido, novoStatus);
+
   return res.redirect(`/pedido/${req.params.id}`);
 });
 
@@ -1536,7 +1511,17 @@ app.get("/pedido/:id/recibo.pdf", requireLogin, async (req, res) => {
   doc.text(`Saldo: R$ ${money(saldo)}`);
   doc.text(`Status: ${pedido.status}`);
   doc.text(`Entrega: ${entregaResumo(e)}`);
+  doc.text(`Estoque baixado: ${pedido.estoqueBaixado ? "Sim" : "Não"}`);
   doc.moveDown();
+
+  if (pedido.materiais?.length) {
+    doc.fontSize(12).text("Materiais usados:", { underline: true });
+    doc.moveDown(0.3);
+    pedido.materiais.forEach((m) => {
+      doc.fontSize(11).text(`- ${m.nome}: ${m.quantidade} ${m.unidade || "un"}`);
+    });
+    doc.moveDown();
+  }
 
   doc.fontSize(12).text("Checklist:", { underline: true });
   doc.moveDown(0.3);
@@ -1560,7 +1545,7 @@ app.get("/pedido/:id/recibo.pdf", requireLogin, async (req, res) => {
   doc.end();
 });
 
-// ===== FINANCEIRO =====
+// ===== FINANCEIRO (mantido) =====
 app.get("/financeiro", requireLogin, async (req, res) => {
   const mesParam = String(req.query.mes || "").trim();
   const { start: ini, end: fim, key: mesKey } = monthRangeFromKey(mesParam || monthKeyFromDate(new Date()));
@@ -1591,11 +1576,6 @@ app.get("/financeiro", requireLogin, async (req, res) => {
   const conteudo = `
     <div class="row" style="justify-content:space-between;margin-bottom:10px;">
       <h2 class="h1">Financeiro</h2>
-      <div class="row">
-        <a class="btn" href="/relatorio?mes=${encodeURIComponent(mesKey)}">Baixar PDF (mês)</a>
-        <a class="btn" href="/export/pedidos.csv?mes=${encodeURIComponent(mesKey)}">Exportar Pedidos (CSV)</a>
-        <a class="btn" href="/export/despesas.csv?mes=${encodeURIComponent(mesKey)}">Exportar Despesas (CSV)</a>
-      </div>
     </div>
 
     <div class="muted" style="margin-bottom:8px;">Mês: <b style="color:#fff">${esc(monthLabelPT(mesKey))}</b></div>
@@ -1714,142 +1694,7 @@ app.post("/despesa/:id/delete", requireLogin, async (req, res) => {
   return res.redirect(mes ? `/financeiro?mes=${encodeURIComponent(mes)}` : "/financeiro");
 });
 
-// ===== RELATÓRIO MENSAL PDF =====
-app.get("/relatorio", requireLogin, async (req, res) => {
-  const mesParam = String(req.query.mes || "").trim();
-  const { start: ini, end: fim, key: mesKey } = monthRangeFromKey(mesParam || monthKeyFromDate(new Date()));
-
-  const pedidosMes = await Pedido.find({ criadoEm: { $gte: ini, $lt: fim } }).populate("clienteId").sort({ criadoEm: 1 });
-  const despesasMes = await Despesa.find({ data: { $gte: ini, $lt: fim } }).sort({ data: 1 });
-
-  const faturamento = pedidosMes.filter((p) => p.status === "Pago").reduce((t, p) => t + Number(p.valor || 0), 0);
-  const despesas = despesasMes.reduce((t, d) => t + Number(d.valor || 0), 0);
-  const lucro = faturamento - despesas;
-
-  res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="relatorio-${mesKey}.pdf"`);
-
-  const doc = new PDFDocument({ size: "A4", margin: 40 });
-  doc.pipe(res);
-
-  doc.fontSize(18).text("Atlas Creative - Relatório Mensal");
-  doc.moveDown(0.2);
-  doc.fontSize(12).text(`Mês: ${monthLabelPT(mesKey)}`);
-  doc.text(`Gerado em: ${fmtDateBR(new Date())}`);
-  doc.moveDown();
-
-  doc.fontSize(14).text("Resumo", { underline: true });
-  doc.moveDown(0.5);
-  doc.fontSize(12).text(`Faturamento (Pago): R$ ${money(faturamento)}`);
-  doc.text(`Despesas: R$ ${money(despesas)}`);
-  doc.text(`Lucro líquido: R$ ${money(lucro)}`);
-  doc.moveDown();
-
-  doc.fontSize(14).text("Pedidos do mês", { underline: true });
-  doc.moveDown(0.5);
-  doc.fontSize(10).text("Pedido | Data | Cliente | Tipo | Produto | Valor | Sinal | Saldo | Status | Entrega");
-  doc.moveDown(0.3);
-
-  pedidosMes.forEach((p) => {
-    const num = String(p.numero).padStart(4, "0");
-    const cli = p.clienteId?.nome ? p.clienteId.nome : "-";
-    doc.text(
-      `#${num} | ${fmtDateBR(p.criadoEm)} | ${cli} | ${p.tipoProduto || "-"} | ${p.produto} | R$ ${money(p.valor)} | R$ ${money(
-        p.sinal || 0
-      )} | R$ ${money(saldoPedido(p.valor, p.sinal))} | ${p.status} | ${entregaResumo(p.entrega)}`
-    );
-  });
-
-  doc.moveDown();
-  doc.fontSize(14).text("Despesas do mês", { underline: true });
-  doc.moveDown(0.5);
-  doc.fontSize(10).text("Data | Categoria | Descrição | Valor");
-  doc.moveDown(0.3);
-
-  despesasMes.forEach((d) => {
-    doc.text(`${fmtDateBR(d.data)} | ${d.categoria} | ${d.descricao} | R$ ${money(d.valor)}`);
-  });
-
-  doc.end();
-});
-
-// ===== EXPORT CSV (mês) =====
-app.get("/export/pedidos.csv", requireLogin, async (req, res) => {
-  const mesParam = String(req.query.mes || "").trim();
-  const { start: ini, end: fim, key: mesKey } = monthRangeFromKey(mesParam || monthKeyFromDate(new Date()));
-
-  const pedidosMes = await Pedido.find({ criadoEm: { $gte: ini, $lt: fim } }).populate("clienteId").sort({ criadoEm: 1 });
-
-  res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", `attachment; filename="pedidos-${mesKey}.csv"`);
-
-  const header = [
-    "numero","data","cliente","whatsapp","tipoProduto","produto","valor","sinal","saldo","status","arquivado",
-    "entrega_tipo","entrega_data","entrega_quem","entrega_observacao",
-    "arteRecebida","arteAprovada","impresso","cortado","entregue","anotacoes"
-  ];
-  const lines = [header.join(",")];
-
-  pedidosMes.forEach((p) => {
-    const ck = p.checklist || {};
-    const e = p.entrega || {};
-    lines.push(
-      [
-        p.numero,
-        fmtDateBR(p.criadoEm),
-        p.clienteId?.nome || "",
-        p.clienteId?.whatsapp || "",
-        p.tipoProduto || "",
-        p.produto || "",
-        String(p.valor).replace(".", ","),
-        String(p.sinal || 0).replace(".", ","),
-        String(saldoPedido(p.valor, p.sinal)).replace(".", ","),
-        p.status,
-        p.arquivado ? "Sim" : "Não",
-        e.tipo || "",
-        fmtDateBR(e.data),
-        e.quemRetirou || "",
-        (e.observacao || "").replace(/\r?\n/g, " "),
-        ck.arteRecebida ? "1" : "0",
-        ck.arteAprovada ? "1" : "0",
-        ck.impresso ? "1" : "0",
-        ck.cortado ? "1" : "0",
-        ck.entregue ? "1" : "0",
-        (p.anotacoes || "").replace(/\r?\n/g, " "),
-      ].map(csvEscape).join(",")
-    );
-  });
-
-  res.send(lines.join("\n"));
-});
-
-app.get("/export/despesas.csv", requireLogin, async (req, res) => {
-  const mesParam = String(req.query.mes || "").trim();
-  const { start: ini, end: fim, key: mesKey } = monthRangeFromKey(mesParam || monthKeyFromDate(new Date()));
-
-  const despesasMes = await Despesa.find({ data: { $gte: ini, $lt: fim } }).sort({ data: 1 });
-
-  res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", `attachment; filename="despesas-${mesKey}.csv"`);
-
-  const header = ["data", "categoria", "descricao", "valor"];
-  const lines = [header.join(",")];
-
-  despesasMes.forEach((d) => {
-    lines.push(
-      [
-        fmtDateBR(d.data),
-        d.categoria || "",
-        d.descricao,
-        String(d.valor).replace(".", ","),
-      ].map(csvEscape).join(",")
-    );
-  });
-
-  res.send(lines.join("\n"));
-});
-
-// ===== ESTOQUE =====
+// ===== ESTOQUE (mantido) =====
 app.get("/estoque", requireLogin, async (req, res) => {
   const q = String(req.query.q || "").trim();
   const filtro = q
