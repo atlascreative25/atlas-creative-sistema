@@ -60,7 +60,7 @@ const Pedido = mongoose.model("Pedido", PedidoSchema);
 const DespesaSchema = new mongoose.Schema(
   {
     descricao: { type: String, required: true },
-    categoria: { type: String, default: "Geral" }, // Papel, Tinta, Energia, Material, etc.
+    categoria: { type: String, default: "Geral" },
     valor: { type: Number, required: true },
     data: { type: Date, default: Date.now },
     criadoEm: { type: Date, default: Date.now },
@@ -68,6 +68,17 @@ const DespesaSchema = new mongoose.Schema(
   { versionKey: false }
 );
 const Despesa = mongoose.model("Despesa", DespesaSchema);
+
+// ===== CONSTANTES =====
+const STATUS_LIST = [
+  "Orçamento",
+  "Aguardando pagamento",
+  "Pago",
+  "Em produção",
+  "Pronto",
+  "Entregue",
+  "Cancelado",
+];
 
 // ===== HELPERS =====
 async function getNextNumero() {
@@ -94,14 +105,10 @@ function esc(s) {
 }
 
 function parseMoneyBR(input) {
-  // aceita "35", "35.50", "35,50", "1.234,56", "1,234.56"
   const raw = String(input ?? "").trim();
   if (!raw) return NaN;
 
-  // remove espaços
   let s = raw.replace(/\s/g, "");
-
-  // Se tiver vírgula e ponto, assume que o separador decimal é o ÚLTIMO deles
   const lastComma = s.lastIndexOf(",");
   const lastDot = s.lastIndexOf(".");
   const lastSep = Math.max(lastComma, lastDot);
@@ -111,7 +118,6 @@ function parseMoneyBR(input) {
     const decPart = s.slice(lastSep + 1).replace(/[.,]/g, "");
     s = `${intPart}.${decPart}`;
   } else {
-    // sem separador decimal
     s = s.replace(/[.,]/g, "");
   }
 
@@ -148,7 +154,7 @@ function layout(titulo, conteudo) {
       </div>
     </div>
 
-    <div style="max-width:980px;margin:auto;padding:20px">
+    <div style="max-width:1100px;margin:auto;padding:20px">
       ${conteudo}
     </div>
 
@@ -169,6 +175,13 @@ function fmtDateBR(date) {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const yy = d.getFullYear();
   return `${dd}/${mm}/${yy}`;
+}
+
+function statusOptions(selected) {
+  return STATUS_LIST.map((s) => {
+    const sel = s === selected ? "selected" : "";
+    return `<option ${sel}>${esc(s)}</option>`;
+  }).join("");
 }
 
 // ===== ROTAS =====
@@ -200,7 +213,7 @@ app.get("/logout", (req, res) => {
   req.session.destroy(() => res.redirect("/"));
 });
 
-// ===== CLIENTES (LISTA + CADASTRO) =====
+// ===== CLIENTES =====
 app.get("/clientes", requireLogin, async (req, res) => {
   const clientes = await Cliente.find().sort({ criadoEm: -1 });
 
@@ -236,7 +249,7 @@ app.get("/clientes", requireLogin, async (req, res) => {
         <div style="margin-bottom:10px;">
           <div style="opacity:.8;font-size:12px;margin-bottom:6px;">WhatsApp</div>
           <input name="whatsapp" placeholder="(21) 9xxxx-xxxx"
-            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+            style="width:100%;padding:10px;border-radius:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
         </div>
 
         <div style="margin-bottom:12px;">
@@ -283,7 +296,6 @@ app.post("/clientes", requireLogin, async (req, res) => {
   res.redirect("/clientes");
 });
 
-// ===== CLIENTE DETALHE (HISTÓRICO) =====
 app.get("/clientes/:id", requireLogin, async (req, res) => {
   const cliente = await Cliente.findById(req.params.id);
   if (!cliente) {
@@ -423,7 +435,7 @@ app.get("/financeiro", requireLogin, async (req, res) => {
         <div style="margin-bottom:10px;">
           <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Valor (aceita 35,50 ou 35.50)</div>
           <input name="valor" placeholder="Ex: 120,00" required
-            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+            style="width:100%;padding:10px;border-radius:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
         </div>
 
         <div style="margin-bottom:14px;">
@@ -465,22 +477,14 @@ app.post("/financeiro/despesa", requireLogin, async (req, res) => {
 
   const v = parseMoneyBR(valor);
   if (!Number.isFinite(v)) {
-    return res.send(
-      layout(
-        "Erro",
-        `<p>Valor inválido. <a style="color:gold" href="/financeiro">Voltar</a></p>`
-      )
-    );
+    return res.send(layout("Erro", `<p>Valor inválido. <a style="color:gold" href="/financeiro">Voltar</a></p>`));
   }
 
   let d = new Date();
   const rawDate = String(data || "").trim();
   if (rawDate) {
-    // dd/mm/aaaa
     const m = rawDate.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (m) {
-      d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
-    }
+    if (m) d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
   }
 
   await Despesa.create({
@@ -493,7 +497,7 @@ app.post("/financeiro/despesa", requireLogin, async (req, res) => {
   res.redirect("/financeiro");
 });
 
-// ===== DASHBOARD =====
+// ===== DASHBOARD (COM AÇÕES DE STATUS) =====
 app.get("/dashboard", requireLogin, async (req, res) => {
   const now = new Date();
   const ini = startOfMonth(now);
@@ -518,6 +522,7 @@ app.get("/dashboard", requireLogin, async (req, res) => {
     .map((p) => {
       const num = String(p.numero).padStart(4, "0");
       const clienteNome = p.clienteId?.nome ? p.clienteId.nome : "-";
+
       return `
         <tr>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">#${esc(num)}</td>
@@ -525,6 +530,18 @@ app.get("/dashboard", requireLogin, async (req, res) => {
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(p.produto)}</td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${money(p.valor)}</td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(p.status)}</td>
+
+          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
+            <form method="POST" action="/pedido/${p._id}/status" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <select name="status"
+                style="padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+                ${statusOptions(p.status)}
+              </select>
+              <button style="background:gold;color:black;padding:8px 10px;border:none;border-radius:10px;font-weight:700;">
+                Atualizar
+              </button>
+            </form>
+          </td>
         </tr>
       `;
     })
@@ -550,7 +567,7 @@ app.get("/dashboard", requireLogin, async (req, res) => {
 
     <h3 style="color:gold;margin:18px 0 10px;">Últimos pedidos</h3>
     <div style="overflow:auto;border:1px solid rgba(255,215,0,.18);border-radius:14px;">
-      <table style="width:100%;border-collapse:collapse;min-width:860px;">
+      <table style="width:100%;border-collapse:collapse;min-width:1040px;">
         <thead>
           <tr style="background:rgba(255,215,0,.08);">
             <th style="text-align:left;padding:10px;">Pedido</th>
@@ -558,16 +575,28 @@ app.get("/dashboard", requireLogin, async (req, res) => {
             <th style="text-align:left;padding:10px;">Produto</th>
             <th style="text-align:left;padding:10px;">Valor</th>
             <th style="text-align:left;padding:10px;">Status</th>
+            <th style="text-align:left;padding:10px;">Ações</th>
           </tr>
         </thead>
         <tbody>
-          ${linhas || `<tr><td style="padding:10px;" colspan="5">Nenhum pedido ainda.</td></tr>`}
+          ${linhas || `<tr><td style="padding:10px;" colspan="6">Nenhum pedido ainda.</td></tr>`}
         </tbody>
       </table>
     </div>
   `;
 
   res.send(layout("Dashboard", conteudo));
+});
+
+// ===== ATUALIZAR STATUS (SÓ STATUS) =====
+app.post("/pedido/:id/status", requireLogin, async (req, res) => {
+  const novoStatus = String(req.body.status || "").trim();
+  if (!STATUS_LIST.includes(novoStatus)) {
+    return res.send(layout("Erro", `<p>Status inválido. <a style="color:gold" href="/dashboard">Voltar</a></p>`));
+  }
+
+  await Pedido.findByIdAndUpdate(req.params.id, { status: novoStatus });
+  res.redirect("/dashboard");
 });
 
 // ===== NOVO PEDIDO =====
@@ -619,13 +648,7 @@ app.get("/novo", requireLogin, async (req, res) => {
           <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Status</div>
           <select name="status"
             style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-            <option>Orçamento</option>
-            <option>Aguardando pagamento</option>
-            <option>Pago</option>
-            <option>Em produção</option>
-            <option>Pronto</option>
-            <option>Entregue</option>
-            <option>Cancelado</option>
+            ${statusOptions("Orçamento")}
           </select>
         </div>
 
@@ -646,12 +669,12 @@ app.post("/pedido", requireLogin, async (req, res) => {
 
   const v = parseMoneyBR(valor);
   if (!Number.isFinite(v)) {
-    return res.send(
-      layout(
-        "Erro",
-        `<p>Valor inválido. <a style="color:gold" href="/novo">Voltar</a></p>`
-      )
-    );
+    return res.send(layout("Erro", `<p>Valor inválido. <a style="color:gold" href="/novo">Voltar</a></p>`));
+  }
+
+  const st = String(status || "").trim();
+  if (!STATUS_LIST.includes(st)) {
+    return res.send(layout("Erro", `<p>Status inválido. <a style="color:gold" href="/novo">Voltar</a></p>`));
   }
 
   await Pedido.create({
@@ -659,7 +682,7 @@ app.post("/pedido", requireLogin, async (req, res) => {
     clienteId: clienteId || null,
     produto: String(produto || "").trim(),
     valor: v,
-    status: String(status || "").trim(),
+    status: st,
   });
 
   res.redirect("/dashboard");
