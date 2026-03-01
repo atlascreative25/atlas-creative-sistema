@@ -1,0 +1,22 @@
+<body style="background:black;color:white;text-align:center;font-family:sans-serif">
+  <h1 style="color:gold;">Novo Pedido</h1>
+
+  <form method="POST" action="/pedido">
+    <input name="produto" placeholder="Produto" required><br><br>
+    <input name="valor" placeholder="Valor" required><br><br>
+
+    <select name="status">
+      <option>Orçamento</option>
+      <option>Aguardando pagamento</option>
+      <option>Pago</option>
+      <option>Em produção</option>
+      <option>Pronto</option>
+      <option>Entregue</option>
+      <option>Cancelado</option>
+    </select><br><br>
+
+    <button style="background:gold;color:black;padding:10px 20px;border:none;">
+      Salvar Pedido
+    </button>
+  </form>
+</body>
