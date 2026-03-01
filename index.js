@@ -57,6 +57,18 @@ const PedidoSchema = new mongoose.Schema(
 );
 const Pedido = mongoose.model("Pedido", PedidoSchema);
 
+const DespesaSchema = new mongoose.Schema(
+  {
+    descricao: { type: String, required: true },
+    categoria: { type: String, default: "Geral" }, // Papel, Tinta, Energia, Material, etc.
+    valor: { type: Number, required: true },
+    data: { type: Date, default: Date.now },
+    criadoEm: { type: Date, default: Date.now },
+  },
+  { versionKey: false }
+);
+const Despesa = mongoose.model("Despesa", DespesaSchema);
+
 // ===== HELPERS =====
 async function getNextNumero() {
   const counter = await Counter.findOneAndUpdate(
@@ -81,6 +93,37 @@ function esc(s) {
     .replaceAll("'", "&#039;");
 }
 
+function parseMoneyBR(input) {
+  // aceita "35", "35.50", "35,50", "1.234,56", "1,234.56"
+  const raw = String(input ?? "").trim();
+  if (!raw) return NaN;
+
+  // remove espaços
+  let s = raw.replace(/\s/g, "");
+
+  // Se tiver vírgula e ponto, assume que o separador decimal é o ÚLTIMO deles
+  const lastComma = s.lastIndexOf(",");
+  const lastDot = s.lastIndexOf(".");
+  const lastSep = Math.max(lastComma, lastDot);
+
+  if (lastSep >= 0) {
+    const intPart = s.slice(0, lastSep).replace(/[.,]/g, "");
+    const decPart = s.slice(lastSep + 1).replace(/[.,]/g, "");
+    s = `${intPart}.${decPart}`;
+  } else {
+    // sem separador decimal
+    s = s.replace(/[.,]/g, "");
+  }
+
+  const n = Number(s);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function money(n) {
+  const v = Number(n || 0);
+  return v.toFixed(2).replace(".", ",");
+}
+
 function layout(titulo, conteudo) {
   return `
   <html>
@@ -100,6 +143,7 @@ function layout(titulo, conteudo) {
         <a href="/dashboard" style="color:gold;text-decoration:none">Dashboard</a>
         <a href="/clientes" style="color:gold;text-decoration:none">Clientes</a>
         <a href="/novo" style="color:gold;text-decoration:none">Novo Pedido</a>
+        <a href="/financeiro" style="color:gold;text-decoration:none">Financeiro</a>
         <a href="/logout" style="color:white;opacity:.85;text-decoration:none">Sair</a>
       </div>
     </div>
@@ -111,6 +155,20 @@ function layout(titulo, conteudo) {
   </body>
   </html>
   `;
+}
+
+function startOfMonth(d = new Date()) {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+function endOfMonth(d = new Date()) {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 1);
+}
+function fmtDateBR(date) {
+  const d = new Date(date);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yy = d.getFullYear();
+  return `${dd}/${mm}/${yy}`;
 }
 
 // ===== ROTAS =====
@@ -245,7 +303,7 @@ app.get("/clientes/:id", requireLogin, async (req, res) => {
         <tr>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">#${esc(num)}</td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(p.produto)}</td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${Number(p.valor).toFixed(2)}</td>
+          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${money(p.valor)}</td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(p.status)}</td>
         </tr>
       `;
@@ -265,7 +323,7 @@ app.get("/clientes/:id", requireLogin, async (req, res) => {
 
       <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;min-width:280px;">
         <div style="opacity:.75;font-size:12px;">Total gasto (exceto cancelados)</div>
-        <div style="color:gold;font-size:22px;font-weight:800;">R$ ${totalGasto.toFixed(2)}</div>
+        <div style="color:gold;font-size:22px;font-weight:800;">R$ ${money(totalGasto)}</div>
       </div>
     </div>
 
@@ -290,13 +348,171 @@ app.get("/clientes/:id", requireLogin, async (req, res) => {
   res.send(layout("Cliente", conteudo));
 });
 
+// ===== FINANCEIRO =====
+app.get("/financeiro", requireLogin, async (req, res) => {
+  const now = new Date();
+  const ini = startOfMonth(now);
+  const fim = endOfMonth(now);
+
+  const despesas = await Despesa.find({ data: { $gte: ini, $lt: fim } }).sort({ data: -1 });
+
+  const totalDespesas = despesas.reduce((t, d) => t + Number(d.valor || 0), 0);
+
+  const pedidosMes = await Pedido.find({ criadoEm: { $gte: ini, $lt: fim } });
+  const faturamentoMes = pedidosMes
+    .filter((p) => p.status === "Pago")
+    .reduce((t, p) => t + Number(p.valor || 0), 0);
+
+  const lucro = faturamentoMes - totalDespesas;
+
+  const linhas = despesas
+    .map((d) => {
+      return `
+        <tr>
+          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(fmtDateBR(d.data))}</td>
+          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(d.categoria || "Geral")}</td>
+          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(d.descricao)}</td>
+          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${money(d.valor)}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  const conteudo = `
+    <h2 style="color:gold;margin:0 0 12px;">Financeiro (mês atual)</h2>
+
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-width:920px;">
+      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
+        <div style="opacity:.75;font-size:12px;">Faturamento do mês (Pago)</div>
+        <div style="color:gold;font-size:22px;font-weight:800;">R$ ${money(faturamentoMes)}</div>
+      </div>
+      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
+        <div style="opacity:.75;font-size:12px;">Despesas do mês</div>
+        <div style="color:#fff;font-size:22px;font-weight:800;">R$ ${money(totalDespesas)}</div>
+      </div>
+      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
+        <div style="opacity:.75;font-size:12px;">Lucro líquido</div>
+        <div style="color:gold;font-size:22px;font-weight:800;">R$ ${money(lucro)}</div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;max-width:560px;">
+      <h3 style="margin:0 0 10px;color:gold;font-size:16px;">Adicionar despesa</h3>
+
+      <form method="POST" action="/financeiro/despesa">
+        <div style="margin-bottom:10px;">
+          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Descrição</div>
+          <input name="descricao" placeholder="Ex: Papel couchê 170g" required
+            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+        </div>
+
+        <div style="margin-bottom:10px;">
+          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Categoria</div>
+          <select name="categoria"
+            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+            <option>Geral</option>
+            <option>Papel</option>
+            <option>Tinta</option>
+            <option>Material</option>
+            <option>Energia</option>
+            <option>Terceiros</option>
+            <option>Frete</option>
+          </select>
+        </div>
+
+        <div style="margin-bottom:10px;">
+          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Valor (aceita 35,50 ou 35.50)</div>
+          <input name="valor" placeholder="Ex: 120,00" required
+            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Data</div>
+          <input name="data" placeholder="dd/mm/aaaa (opcional)"
+            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+          <div style="opacity:.6;font-size:12px;margin-top:6px;">Se deixar vazio, usa a data de hoje.</div>
+        </div>
+
+        <button style="background:gold;color:black;padding:10px 16px;border:none;border-radius:10px;font-weight:700;">
+          Salvar despesa
+        </button>
+      </form>
+    </div>
+
+    <h3 style="color:gold;margin:18px 0 10px;">Despesas do mês</h3>
+    <div style="overflow:auto;border:1px solid rgba(255,215,0,.18);border-radius:14px;">
+      <table style="width:100%;border-collapse:collapse;min-width:860px;">
+        <thead>
+          <tr style="background:rgba(255,215,0,.08);">
+            <th style="text-align:left;padding:10px;">Data</th>
+            <th style="text-align:left;padding:10px;">Categoria</th>
+            <th style="text-align:left;padding:10px;">Descrição</th>
+            <th style="text-align:left;padding:10px;">Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${linhas || `<tr><td style="padding:10px;" colspan="4">Nenhuma despesa cadastrada neste mês.</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  res.send(layout("Financeiro", conteudo));
+});
+
+app.post("/financeiro/despesa", requireLogin, async (req, res) => {
+  const { descricao, categoria, valor, data } = req.body;
+
+  const v = parseMoneyBR(valor);
+  if (!Number.isFinite(v)) {
+    return res.send(
+      layout(
+        "Erro",
+        `<p>Valor inválido. <a style="color:gold" href="/financeiro">Voltar</a></p>`
+      )
+    );
+  }
+
+  let d = new Date();
+  const rawDate = String(data || "").trim();
+  if (rawDate) {
+    // dd/mm/aaaa
+    const m = rawDate.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (m) {
+      d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+    }
+  }
+
+  await Despesa.create({
+    descricao: String(descricao || "").trim(),
+    categoria: String(categoria || "Geral").trim(),
+    valor: v,
+    data: d,
+  });
+
+  res.redirect("/financeiro");
+});
+
 // ===== DASHBOARD =====
 app.get("/dashboard", requireLogin, async (req, res) => {
-  const pedidos = await Pedido.find().populate("clienteId").sort({ criadoEm: -1 }).limit(80);
+  const now = new Date();
+  const ini = startOfMonth(now);
+  const fim = endOfMonth(now);
 
-  const faturamento = pedidos
+  const pedidos = await Pedido.find()
+    .populate("clienteId")
+    .sort({ criadoEm: -1 })
+    .limit(80);
+
+  const pedidosMes = await Pedido.find({ criadoEm: { $gte: ini, $lt: fim } });
+  const despesasMes = await Despesa.find({ data: { $gte: ini, $lt: fim } });
+
+  const faturamentoMes = pedidosMes
     .filter((p) => p.status === "Pago")
     .reduce((total, p) => total + Number(p.valor || 0), 0);
+
+  const totalDespesas = despesasMes.reduce((t, d) => t + Number(d.valor || 0), 0);
+  const lucro = faturamentoMes - totalDespesas;
 
   const linhas = pedidos
     .map((p) => {
@@ -307,7 +523,7 @@ app.get("/dashboard", requireLogin, async (req, res) => {
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">#${esc(num)}</td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(clienteNome)}</td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(p.produto)}</td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${Number(p.valor).toFixed(2)}</td>
+          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${money(p.valor)}</td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(p.status)}</td>
         </tr>
       `;
@@ -315,9 +531,21 @@ app.get("/dashboard", requireLogin, async (req, res) => {
     .join("");
 
   const conteudo = `
-    <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;max-width:360px;">
-      <div style="opacity:.75;font-size:12px;">Faturamento (status Pago)</div>
-      <div style="color:gold;font-size:22px;font-weight:800;">R$ ${faturamento.toFixed(2)}</div>
+    <h2 style="color:gold;margin:0 0 12px;">Dashboard (mês atual)</h2>
+
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-width:920px;">
+      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
+        <div style="opacity:.75;font-size:12px;">Faturamento (Pago)</div>
+        <div style="color:gold;font-size:22px;font-weight:800;">R$ ${money(faturamentoMes)}</div>
+      </div>
+      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
+        <div style="opacity:.75;font-size:12px;">Despesas</div>
+        <div style="color:#fff;font-size:22px;font-weight:800;">R$ ${money(totalDespesas)}</div>
+      </div>
+      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
+        <div style="opacity:.75;font-size:12px;">Lucro líquido</div>
+        <div style="color:gold;font-size:22px;font-weight:800;">R$ ${money(lucro)}</div>
+      </div>
     </div>
 
     <h3 style="color:gold;margin:18px 0 10px;">Últimos pedidos</h3>
@@ -382,8 +610,8 @@ app.get("/novo", requireLogin, async (req, res) => {
         </div>
 
         <div style="margin-bottom:10px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Valor (use ponto: 35.00)</div>
-          <input name="valor" placeholder="Ex: 35.00" required
+          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Valor (aceita 35,50 ou 35.50)</div>
+          <input name="valor" placeholder="Ex: 35,00" required
             style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
         </div>
 
@@ -416,11 +644,21 @@ app.post("/pedido", requireLogin, async (req, res) => {
 
   const numero = await getNextNumero();
 
+  const v = parseMoneyBR(valor);
+  if (!Number.isFinite(v)) {
+    return res.send(
+      layout(
+        "Erro",
+        `<p>Valor inválido. <a style="color:gold" href="/novo">Voltar</a></p>`
+      )
+    );
+  }
+
   await Pedido.create({
     numero,
     clienteId: clienteId || null,
     produto: String(produto || "").trim(),
-    valor: Number(valor),
+    valor: v,
     status: String(status || "").trim(),
   });
 
