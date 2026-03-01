@@ -52,6 +52,7 @@ const PedidoSchema = new mongoose.Schema(
     produto: { type: String, required: true },
     valor: { type: Number, required: true },
     status: { type: String, required: true },
+    anotacoes: { type: String, default: "" }, // ✅ NOVO: anotações do pedido
     criadoEm: { type: Date, default: Date.now },
   },
   { versionKey: false }
@@ -181,7 +182,40 @@ function statusOptions(selected) {
   }).join("");
 }
 
-function monthOptionsHTML(selectedKey, basePath) {
+function onlyDigits(s) {
+  return String(s || "").replace(/\D/g, "");
+}
+
+function waLinkBR(whatsapp) {
+  // aceita número com (21) 9xxxx-xxxx etc
+  const digits = onlyDigits(whatsapp);
+  if (!digits) return "";
+  // Se já tiver 55 no começo, usa; senão adiciona
+  const phone = digits.startsWith("55") ? digits : `55${digits}`;
+  return `https://wa.me/${phone}`;
+}
+
+function searchBoxHTML({ basePath, q, extraQuery = {} }) {
+  // mantém outros params no redirect (ex: mes)
+  const hidden = Object.entries(extraQuery)
+    .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`)
+    .join("");
+
+  return `
+    <form method="GET" action="${esc(basePath)}" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px;">
+      ${hidden}
+      <input name="q" value="${esc(q || "")}" placeholder="Buscar..."
+        style="flex:1;min-width:240px;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+      <button style="background:gold;color:black;padding:10px 14px;border:none;border-radius:10px;font-weight:800;cursor:pointer;">
+        Buscar
+      </button>
+      ${q ? `<a href="${esc(basePath)}${Object.keys(extraQuery).length ? "?" + new URLSearchParams(extraQuery).toString() : ""}"
+              style="color:gold;text-decoration:none;font-weight:800;">Limpar</a>` : ""}
+    </form>
+  `;
+}
+
+function monthOptionsHTML(selectedKey, basePath, q) {
   const now = new Date();
   const opts = [];
   for (let i = 0; i < 12; i++) {
@@ -190,6 +224,8 @@ function monthOptionsHTML(selectedKey, basePath) {
     const sel = k === selectedKey ? "selected" : "";
     opts.push(`<option value="${esc(k)}" ${sel}>${esc(monthLabelPT(k))}</option>`);
   }
+
+  const qPart = q ? `&q=${encodeURIComponent(q)}` : "";
 
   return `
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px;">
@@ -209,7 +245,7 @@ function monthOptionsHTML(selectedKey, basePath) {
           const s = document.getElementById('mesSel');
           s.addEventListener('change', function(){
             const v = s.value;
-            window.location.href = '${basePath}?mes=' + encodeURIComponent(v);
+            window.location.href = '${basePath}?mes=' + encodeURIComponent(v) + '${qPart}';
           });
         })();
       </script>
@@ -279,12 +315,26 @@ app.get("/logout", (req, res) => {
   req.session.destroy(() => res.redirect("/"));
 });
 
-// ===== CLIENTES =====
+// ===== CLIENTES (BUSCA + BOTÃO WHATSAPP) =====
 app.get("/clientes", requireLogin, async (req, res) => {
-  const clientes = await Cliente.find().sort({ criadoEm: -1 });
+  const q = String(req.query.q || "").trim();
+  const query = q
+    ? {
+        $or: [
+          { nome: { $regex: q, $options: "i" } },
+          { whatsapp: { $regex: q, $options: "i" } },
+          { observacoes: { $regex: q, $options: "i" } },
+        ],
+      }
+    : {};
+
+  const clientes = await Cliente.find(query).sort({ criadoEm: -1 });
+
+  const buscaHTML = searchBoxHTML({ basePath: "/clientes", q });
 
   const linhas = clientes
     .map((c) => {
+      const wa = waLinkBR(c.whatsapp);
       return `
         <tr>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
@@ -292,8 +342,20 @@ app.get("/clientes", requireLogin, async (req, res) => {
               ${esc(c.nome)}
             </a>
           </td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(c.whatsapp)}</td>
+          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
+            ${esc(c.whatsapp)}
+          </td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(c.observacoes)}</td>
+          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
+            ${
+              wa
+                ? `<a href="${esc(wa)}" target="_blank"
+                     style="background:gold;color:black;padding:8px 10px;border-radius:10px;text-decoration:none;font-weight:800;">
+                     WhatsApp
+                   </a>`
+                : `<span style="opacity:.6;font-size:12px;">Sem número</span>`
+            }
+          </td>
         </tr>
       `;
     })
@@ -301,6 +363,8 @@ app.get("/clientes", requireLogin, async (req, res) => {
 
   const conteudo = `
     <h2 style="color:gold;margin:0 0 12px;">Clientes</h2>
+
+    ${buscaHTML}
 
     <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;max-width:560px;">
       <h3 style="margin:0 0 10px;color:gold;font-size:16px;">Cadastrar cliente</h3>
@@ -332,16 +396,17 @@ app.get("/clientes", requireLogin, async (req, res) => {
 
     <h3 style="color:gold;margin:18px 0 10px;">Lista de clientes</h3>
     <div style="overflow:auto;border:1px solid rgba(255,215,0,.18);border-radius:14px;">
-      <table style="width:100%;border-collapse:collapse;min-width:740px;">
+      <table style="width:100%;border-collapse:collapse;min-width:900px;">
         <thead>
           <tr style="background:rgba(255,215,0,.08);">
             <th style="text-align:left;padding:10px;">Nome</th>
             <th style="text-align:left;padding:10px;">WhatsApp</th>
             <th style="text-align:left;padding:10px;">Observações</th>
+            <th style="text-align:left;padding:10px;">Ação</th>
           </tr>
         </thead>
         <tbody>
-          ${linhas || `<tr><td style="padding:10px;" colspan="3">Nenhum cliente cadastrado ainda.</td></tr>`}
+          ${linhas || `<tr><td style="padding:10px;" colspan="4">Nenhum cliente encontrado.</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -374,12 +439,16 @@ app.get("/clientes/:id", requireLogin, async (req, res) => {
     .filter((p) => p.status !== "Cancelado")
     .reduce((t, p) => t + Number(p.valor || 0), 0);
 
+  const wa = waLinkBR(cliente.whatsapp);
+
   const linhas = pedidos
     .map((p) => {
       const num = String(p.numero).padStart(4, "0");
       return `
         <tr>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">#${esc(num)}</td>
+          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
+            <a href="/pedido/${p._id}" style="color:gold;text-decoration:none;font-weight:800;">#${esc(num)}</a>
+          </td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(p.produto)}</td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${money(p.valor)}</td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(p.status)}</td>
@@ -390,13 +459,23 @@ app.get("/clientes/:id", requireLogin, async (req, res) => {
 
   const conteudo = `
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;">
-      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;min-width:280px;">
+      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;min-width:320px;">
         <h2 style="color:gold;margin:0 0 8px;">${esc(cliente.nome)}</h2>
-        <div style="opacity:.85;margin-bottom:6px;">WhatsApp: ${esc(cliente.whatsapp || "-")}</div>
-        <div style="opacity:.75;">Obs: ${esc(cliente.observacoes || "-")}</div>
-        <div style="margin-top:12px;">
-          <a href="/clientes" style="color:gold;text-decoration:none;font-weight:700;">← Voltar</a>
+        <div style="opacity:.85;margin-bottom:8px;">WhatsApp: ${esc(cliente.whatsapp || "-")}</div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+          ${
+            wa
+              ? `<a href="${esc(wa)}" target="_blank"
+                   style="background:gold;color:black;padding:10px 12px;border-radius:10px;text-decoration:none;font-weight:900;">
+                   Abrir WhatsApp
+                 </a>`
+              : ""
+          }
+          <a href="/clientes" style="color:gold;text-decoration:none;font-weight:900;padding:10px 0;">← Voltar</a>
         </div>
+
+        <div style="opacity:.75;">Obs: ${esc(cliente.observacoes || "-")}</div>
       </div>
 
       <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;min-width:280px;">
@@ -426,7 +505,7 @@ app.get("/clientes/:id", requireLogin, async (req, res) => {
   res.send(layout("Cliente", conteudo));
 });
 
-// ===== FINANCEIRO (COM EXCLUIR + PDF BOTÃO JÁ NO FILTRO) =====
+// ===== FINANCEIRO (EXCLUIR) =====
 app.get("/financeiro", requireLogin, async (req, res) => {
   const mesParam = String(req.query.mes || "").trim();
   const { start: ini, end: fim, key: mesKey } = monthRangeFromKey(mesParam || monthKeyFromDate(new Date()));
@@ -462,11 +541,9 @@ app.get("/financeiro", requireLogin, async (req, res) => {
     })
     .join("");
 
-  const filtroMes = monthOptionsHTML(mesKey, "/financeiro");
-
   const conteudo = `
     <h2 style="color:gold;margin:0 0 8px;">Financeiro</h2>
-    ${filtroMes}
+    ${monthOptionsHTML(mesKey, "/financeiro", "")}
 
     <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-width:920px;">
       <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
@@ -574,15 +651,18 @@ app.post("/financeiro/despesa", requireLogin, async (req, res) => {
   return res.redirect(mes ? `/financeiro?mes=${encodeURIComponent(mes)}` : "/financeiro");
 });
 
-// ===== DASHBOARD (STATUS + EXCLUIR + PDF BOTÃO NO FILTRO) =====
+app.post("/despesa/:id/delete", requireLogin, async (req, res) => {
+  await Despesa.findByIdAndDelete(req.params.id);
+  const mes = String(req.query.mes || "").trim();
+  return res.redirect(mes ? `/financeiro?mes=${encodeURIComponent(mes)}` : "/financeiro");
+});
+
+// ===== DASHBOARD (BUSCA + STATUS + EXCLUIR + LINK PARA TELA DO PEDIDO) =====
 app.get("/dashboard", requireLogin, async (req, res) => {
   const mesParam = String(req.query.mes || "").trim();
   const { start: ini, end: fim, key: mesKey } = monthRangeFromKey(mesParam || monthKeyFromDate(new Date()));
 
-  const pedidosLista = await Pedido.find()
-    .populate("clienteId")
-    .sort({ criadoEm: -1 })
-    .limit(80);
+  const q = String(req.query.q || "").trim();
 
   const pedidosMes = await Pedido.find({ criadoEm: { $gte: ini, $lt: fim } });
   const despesasMes = await Despesa.find({ data: { $gte: ini, $lt: fim } });
@@ -594,7 +674,38 @@ app.get("/dashboard", requireLogin, async (req, res) => {
   const totalDespesas = despesasMes.reduce((t, d) => t + Number(d.valor || 0), 0);
   const lucro = faturamentoMes - totalDespesas;
 
-  const filtroMes = monthOptionsHTML(mesKey, "/dashboard");
+  // Lista geral (últimos pedidos), com busca opcional:
+  const baseListQuery = q
+    ? {
+        $or: [
+          // busca por número digitando "12" etc (vai achar dentro do numero quando virar string)
+          { produto: { $regex: q, $options: "i" } },
+          { status: { $regex: q, $options: "i" } },
+        ],
+      }
+    : {};
+
+  // Para buscar por cliente também, fazemos populate e filtramos em memória (simples e suficiente)
+  let pedidosLista = await Pedido.find(baseListQuery)
+    .populate("clienteId")
+    .sort({ criadoEm: -1 })
+    .limit(120);
+
+  if (q) {
+    const qlow = q.toLowerCase();
+    pedidosLista = pedidosLista.filter((p) => {
+      const num = String(p.numero || "");
+      const cli = (p.clienteId?.nome || "").toLowerCase();
+      const prod = (p.produto || "").toLowerCase();
+      const st = (p.status || "").toLowerCase();
+      return num.includes(qlow) || cli.includes(qlow) || prod.includes(qlow) || st.includes(qlow);
+    }).slice(0, 80);
+  } else {
+    pedidosLista = pedidosLista.slice(0, 80);
+  }
+
+  const filtroMes = monthOptionsHTML(mesKey, "/dashboard", q);
+  const busca = searchBoxHTML({ basePath: "/dashboard", q, extraQuery: { mes: mesKey } });
 
   const linhas = pedidosLista
     .map((p) => {
@@ -603,7 +714,9 @@ app.get("/dashboard", requireLogin, async (req, res) => {
 
       return `
         <tr>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">#${esc(num)}</td>
+          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
+            <a href="/pedido/${p._id}" style="color:gold;text-decoration:none;font-weight:900;">#${esc(num)}</a>
+          </td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(clienteNome)}</td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(p.produto)}</td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${money(p.valor)}</td>
@@ -611,18 +724,18 @@ app.get("/dashboard", requireLogin, async (req, res) => {
 
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-              <form method="POST" action="/pedido/${p._id}/status?mes=${encodeURIComponent(mesKey)}"
+              <form method="POST" action="/pedido/${p._id}/status?mes=${encodeURIComponent(mesKey)}&q=${encodeURIComponent(q)}"
                 style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0;">
                 <select name="status"
                   style="padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
                   ${statusOptions(p.status)}
                 </select>
-                <button style="background:gold;color:black;padding:8px 10px;border:none;border-radius:10px;font-weight:700;">
+                <button style="background:gold;color:black;padding:8px 10px;border:none;border-radius:10px;font-weight:800;">
                   Atualizar
                 </button>
               </form>
 
-              <form method="POST" action="/pedido/${p._id}/delete?mes=${encodeURIComponent(mesKey)}"
+              <form method="POST" action="/pedido/${p._id}/delete?mes=${encodeURIComponent(mesKey)}&q=${encodeURIComponent(q)}"
                 style="margin:0;" onsubmit="return confirm('Excluir este pedido?');">
                 <button style="background:#222;color:#fff;padding:8px 10px;border:1px solid rgba(255,215,0,.25);border-radius:10px;cursor:pointer;">
                   Excluir
@@ -638,6 +751,7 @@ app.get("/dashboard", requireLogin, async (req, res) => {
   const conteudo = `
     <h2 style="color:gold;margin:0 0 8px;">Dashboard</h2>
     ${filtroMes}
+    ${busca}
 
     <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-width:920px;">
       <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
@@ -654,7 +768,7 @@ app.get("/dashboard", requireLogin, async (req, res) => {
       </div>
     </div>
 
-    <h3 style="color:gold;margin:18px 0 10px;">Últimos pedidos (lista geral)</h3>
+    <h3 style="color:gold;margin:18px 0 10px;">Pedidos (últimos) ${q ? `— buscando: "${esc(q)}"` : ""}</h3>
     <div style="overflow:auto;border:1px solid rgba(255,215,0,.18);border-radius:14px;">
       <table style="width:100%;border-collapse:collapse;min-width:1100px;">
         <thead>
@@ -668,19 +782,20 @@ app.get("/dashboard", requireLogin, async (req, res) => {
           </tr>
         </thead>
         <tbody>
-          ${linhas || `<tr><td style="padding:10px;" colspan="6">Nenhum pedido ainda.</td></tr>`}
+          ${linhas || `<tr><td style="padding:10px;" colspan="6">Nenhum pedido encontrado.</td></tr>`}
         </tbody>
       </table>
     </div>
+
     <div style="opacity:.65;font-size:12px;margin-top:8px;">
-      Obs: o filtro de mês muda os números (cards). A lista mostra os últimos pedidos gerais.
+      Obs: o filtro de mês muda os números (cards). A lista é geral (últimos pedidos).
     </div>
   `;
 
   res.send(layout("Dashboard", conteudo));
 });
 
-// ===== ATUALIZAR STATUS =====
+// ===== ATUALIZAR STATUS / EXCLUIR PEDIDO =====
 app.post("/pedido/:id/status", requireLogin, async (req, res) => {
   const novoStatus = String(req.body.status || "").trim();
   if (!STATUS_LIST.includes(novoStatus)) {
@@ -689,21 +804,115 @@ app.post("/pedido/:id/status", requireLogin, async (req, res) => {
   await Pedido.findByIdAndUpdate(req.params.id, { status: novoStatus });
 
   const mes = String(req.query.mes || "").trim();
-  return res.redirect(mes ? `/dashboard?mes=${encodeURIComponent(mes)}` : "/dashboard");
+  const q = String(req.query.q || "").trim();
+  const qs = new URLSearchParams();
+  if (mes) qs.set("mes", mes);
+  if (q) qs.set("q", q);
+  return res.redirect(`/dashboard${qs.toString() ? "?" + qs.toString() : ""}`);
 });
 
-// ===== EXCLUIR PEDIDO =====
 app.post("/pedido/:id/delete", requireLogin, async (req, res) => {
   await Pedido.findByIdAndDelete(req.params.id);
+
   const mes = String(req.query.mes || "").trim();
-  return res.redirect(mes ? `/dashboard?mes=${encodeURIComponent(mes)}` : "/dashboard");
+  const q = String(req.query.q || "").trim();
+  const qs = new URLSearchParams();
+  if (mes) qs.set("mes", mes);
+  if (q) qs.set("q", q);
+  return res.redirect(`/dashboard${qs.toString() ? "?" + qs.toString() : ""}`);
 });
 
-// ===== EXCLUIR DESPESA =====
-app.post("/despesa/:id/delete", requireLogin, async (req, res) => {
-  await Despesa.findByIdAndDelete(req.params.id);
-  const mes = String(req.query.mes || "").trim();
-  return res.redirect(mes ? `/financeiro?mes=${encodeURIComponent(mes)}` : "/financeiro");
+// ===== TELA DO PEDIDO (DETALHE + ANOTAÇÕES + STATUS + EXCLUIR) =====
+app.get("/pedido/:id", requireLogin, async (req, res) => {
+  const pedido = await Pedido.findById(req.params.id).populate("clienteId");
+  if (!pedido) {
+    return res.send(layout("Pedido", `<p>Pedido não encontrado. <a style="color:gold" href="/dashboard">Voltar</a></p>`));
+  }
+
+  const num = String(pedido.numero || 0).padStart(4, "0");
+  const clienteNome = pedido.clienteId?.nome || "-";
+  const clienteId = pedido.clienteId?._id || "";
+  const wa = waLinkBR(pedido.clienteId?.whatsapp || "");
+
+  const conteudo = `
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;">
+      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;min-width:340px;flex:1;">
+        <h2 style="color:gold;margin:0 0 6px;">Pedido #${esc(num)}</h2>
+        <div style="opacity:.75;font-size:12px;margin-bottom:10px;">Criado em: ${esc(fmtDateBR(pedido.criadoEm))}</div>
+
+        <div style="margin-bottom:8px;"><b>Cliente:</b>
+          ${
+            clienteId
+              ? `<a href="/clientes/${clienteId}" style="color:gold;text-decoration:none;font-weight:900;">${esc(clienteNome)}</a>`
+              : esc(clienteNome)
+          }
+        </div>
+
+        <div style="margin-bottom:8px;"><b>Produto:</b> ${esc(pedido.produto)}</div>
+        <div style="margin-bottom:8px;"><b>Valor:</b> R$ ${money(pedido.valor)}</div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;">
+          <a href="/dashboard" style="color:gold;text-decoration:none;font-weight:900;">← Voltar</a>
+          ${
+            wa
+              ? `<a href="${esc(wa)}" target="_blank"
+                   style="background:gold;color:black;padding:10px 12px;border-radius:10px;text-decoration:none;font-weight:900;">
+                   WhatsApp
+                 </a>`
+              : ""
+          }
+        </div>
+      </div>
+
+      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;min-width:340px;flex:1;">
+        <h3 style="color:gold;margin:0 0 10px;">Status</h3>
+        <form method="POST" action="/pedido/${pedido._id}/status?from=pedido"
+          style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <select name="status"
+            style="padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+            ${statusOptions(pedido.status)}
+          </select>
+          <button style="background:gold;color:black;padding:10px 14px;border:none;border-radius:10px;font-weight:900;cursor:pointer;">
+            Salvar status
+          </button>
+        </form>
+
+        <div style="margin-top:14px;">
+          <form method="POST" action="/pedido/${pedido._id}/delete?from=pedido"
+            onsubmit="return confirm('Excluir este pedido?');">
+            <button style="background:#222;color:#fff;padding:10px 14px;border:1px solid rgba(255,215,0,.25);border-radius:10px;font-weight:900;cursor:pointer;">
+              Excluir pedido
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:12px;border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
+      <h3 style="color:gold;margin:0 0 10px;">Anotações</h3>
+
+      <form method="POST" action="/pedido/${pedido._id}/anotacoes">
+        <textarea name="anotacoes" rows="6" placeholder="Ex: arte aprovada / retirar amanhã / combinado pagamento..."
+          style="width:100%;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;resize:vertical;">${esc(
+            pedido.anotacoes || ""
+          )}</textarea>
+
+        <div style="margin-top:10px;">
+          <button style="background:gold;color:black;padding:10px 14px;border:none;border-radius:10px;font-weight:900;cursor:pointer;">
+            Salvar anotações
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  res.send(layout(`Pedido #${num}`, conteudo));
+});
+
+app.post("/pedido/:id/anotacoes", requireLogin, async (req, res) => {
+  const anotacoes = String(req.body.anotacoes || "");
+  await Pedido.findByIdAndUpdate(req.params.id, { anotacoes });
+  res.redirect(`/pedido/${req.params.id}`);
 });
 
 // ===== NOVO PEDIDO =====
