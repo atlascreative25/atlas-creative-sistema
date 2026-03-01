@@ -82,17 +82,49 @@ function layout(title, content) {
         </div>
         <div style="display:flex;gap:12px;align-items:center;">
           <a href="/dashboard" style="color:gold;text-decoration:none;">Dashboard</a>
-          <a href="/novo" style="color:gold;text-decoration:none;">Novo pedido</a>
-          <a href="/logout" style="color:#fff;opacity:.8;text-decoration:none;">Sair</a>
-        </div>
-      </div>
+          app.get("/novo", requireLogin, (req, res) => {
+  const content = `
+    <h2 style="color:gold;margin:0 0 12px;">Novo Pedido</h2>
 
-      <div style="max-width:900px;margin:0 auto;padding:16px;">
-        ${content}
-      </div>
-    </body>
-  </html>`;
-}
+    <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;max-width:520px;">
+      <form method="POST" action="/pedido">
+        <div style="margin-bottom:10px;">
+          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Produto</div>
+          <input name="produto" placeholder="Ex: Cartão de visita" required
+            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+        </div>
+
+        <div style="margin-bottom:10px;">
+          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Valor (apenas números)</div>
+          <input name="valor" placeholder="Ex: 35" required
+            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Status</div>
+          <select name="status"
+            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+            <option>Orçamento</option>
+            <option>Aguardando pagamento</option>
+            <option>Pago</option>
+            <option>Em produção</option>
+            <option>Pronto</option>
+            <option>Entregue</option>
+            <option>Cancelado</option>
+          </select>
+        </div>
+
+        <button style="background:gold;color:black;padding:10px 16px;border:none;border-radius:10px;font-weight:700;">
+          Salvar Pedido
+        </button>
+
+        <a href="/dashboard" style="margin-left:10px;color:gold;text-decoration:none;">Voltar</a>
+      </form>
+    </div>
+  `;
+
+  res.send(layout("Novo Pedido", content));
+});
 
 // ====== ROUTES ======
 app.get("/", (req, res) => {
