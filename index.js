@@ -2,6 +2,7 @@ const express = require("express");
 const session = require("express-session");
 const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
+const PDFDocument = require("pdfkit");
 
 const app = express();
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -130,46 +131,6 @@ function money(n) {
   return v.toFixed(2).replace(".", ",");
 }
 
-function layout(titulo, conteudo) {
-  return `
-  <html>
-  <head>
-    <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <title>${esc(titulo)}</title>
-  </head>
-  <body style="margin:0;background:black;color:white;font-family:Arial">
-
-    <div style="padding:15px;border-bottom:1px solid #333;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-      <div>
-        <div style="color:gold;font-weight:bold;font-size:20px">Atlas Creative</div>
-        <div style="font-size:12px;opacity:.7">Sistema de Gestão</div>
-      </div>
-      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
-        <a href="/dashboard" style="color:gold;text-decoration:none">Dashboard</a>
-        <a href="/clientes" style="color:gold;text-decoration:none">Clientes</a>
-        <a href="/novo" style="color:gold;text-decoration:none">Novo Pedido</a>
-        <a href="/financeiro" style="color:gold;text-decoration:none">Financeiro</a>
-        <a href="/logout" style="color:white;opacity:.85;text-decoration:none">Sair</a>
-      </div>
-    </div>
-
-    <div style="max-width:1100px;margin:auto;padding:20px">
-      ${conteudo}
-    </div>
-
-  </body>
-  </html>
-  `;
-}
-
-function statusOptions(selected) {
-  return STATUS_LIST.map((s) => {
-    const sel = s === selected ? "selected" : "";
-    return `<option ${sel}>${esc(s)}</option>`;
-  }).join("");
-}
-
 function fmtDateBR(date) {
   const d = new Date(date);
   const dd = String(d.getDate()).padStart(2, "0");
@@ -185,11 +146,10 @@ function monthKeyFromDate(d) {
 }
 
 function parseMonthKey(key) {
-  // "YYYY-MM"
   const m = String(key || "").match(/^(\d{4})-(\d{2})$/);
   if (!m) return null;
   const year = Number(m[1]);
-  const month = Number(m[2]); // 1..12
+  const month = Number(m[2]);
   if (month < 1 || month > 12) return null;
   return { year, month };
 }
@@ -214,8 +174,14 @@ function monthLabelPT(key) {
   return `${names[parsed.month - 1]} ${parsed.year}`;
 }
 
+function statusOptions(selected) {
+  return STATUS_LIST.map((s) => {
+    const sel = s === selected ? "selected" : "";
+    return `<option ${sel}>${esc(s)}</option>`;
+  }).join("");
+}
+
 function monthOptionsHTML(selectedKey, basePath) {
-  // últimos 12 meses
   const now = new Date();
   const opts = [];
   for (let i = 0; i < 12; i++) {
@@ -225,7 +191,6 @@ function monthOptionsHTML(selectedKey, basePath) {
     opts.push(`<option value="${esc(k)}" ${sel}>${esc(monthLabelPT(k))}</option>`);
   }
 
-  // select faz redirect via JS
   return `
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px;">
       <div style="opacity:.8;font-size:12px;">Mês:</div>
@@ -233,6 +198,12 @@ function monthOptionsHTML(selectedKey, basePath) {
         style="padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
         ${opts.join("")}
       </select>
+
+      <a href="/relatorio?mes=${encodeURIComponent(selectedKey)}"
+         style="background:gold;color:black;padding:8px 12px;border-radius:10px;text-decoration:none;font-weight:800;">
+         Baixar PDF
+      </a>
+
       <script>
         (function(){
           const s = document.getElementById('mesSel');
@@ -246,7 +217,40 @@ function monthOptionsHTML(selectedKey, basePath) {
   `;
 }
 
-// ===== ROTAS =====
+function layout(titulo, conteudo) {
+  return `
+  <html>
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>${esc(titulo)}</title>
+  </head>
+  <body style="margin:0;background:black;color:white;font-family:Arial">
+
+    <div style="padding:15px;border-bottom:1px solid #333;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+      <div>
+        <div style="color:gold;font-weight:bold;font-size:20px">Atlas Creative</div>
+        <div style="font-size:12px;opacity:.7">Sistema de Gestão</div>
+      </div>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
+        <a href="/dashboard" style="color:gold;text-decoration:none">Dashboard</a>
+        <a href="/clientes" style="color:gold;text-decoration:none">Clientes</a>
+        <a href="/novo" style="color:gold;text-decoration:none">Novo Pedido</a>
+        <a href="/financeiro" style="color:gold;text-decoration:none">Financeiro</a>
+        <a href="/logout" style="color:white;opacity:.85;text-decoration:none">Sair</a>
+      </div>
+    </div>
+
+    <div style="max-width:1200px;margin:auto;padding:20px">
+      ${conteudo}
+    </div>
+
+  </body>
+  </html>
+  `;
+}
+
+// ===== ROTAS BÁSICAS =====
 app.get("/", (req, res) => {
   if (req.session.logado) return res.redirect("/dashboard");
 
@@ -422,7 +426,7 @@ app.get("/clientes/:id", requireLogin, async (req, res) => {
   res.send(layout("Cliente", conteudo));
 });
 
-// ===== FINANCEIRO (COM FILTRO POR MÊS) =====
+// ===== FINANCEIRO (COM EXCLUIR + PDF BOTÃO JÁ NO FILTRO) =====
 app.get("/financeiro", requireLogin, async (req, res) => {
   const mesParam = String(req.query.mes || "").trim();
   const { start: ini, end: fim, key: mesKey } = monthRangeFromKey(mesParam || monthKeyFromDate(new Date()));
@@ -445,6 +449,14 @@ app.get("/financeiro", requireLogin, async (req, res) => {
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(d.categoria || "Geral")}</td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(d.descricao)}</td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${money(d.valor)}</td>
+          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
+            <form method="POST" action="/despesa/${d._id}/delete?mes=${encodeURIComponent(mesKey)}"
+              onsubmit="return confirm('Excluir esta despesa?');">
+              <button style="background:#222;color:#fff;padding:8px 10px;border:1px solid rgba(255,215,0,.25);border-radius:10px;cursor:pointer;">
+                Excluir
+              </button>
+            </form>
+          </td>
         </tr>
       `;
     })
@@ -496,7 +508,7 @@ app.get("/financeiro", requireLogin, async (req, res) => {
         </div>
 
         <div style="margin-bottom:10px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Valor (aceita 35,50 ou 35.50)</div>
+          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Valor</div>
           <input name="valor" placeholder="Ex: 120,00" required
             style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
         </div>
@@ -516,17 +528,18 @@ app.get("/financeiro", requireLogin, async (req, res) => {
 
     <h3 style="color:gold;margin:18px 0 10px;">Despesas — ${esc(monthLabelPT(mesKey))}</h3>
     <div style="overflow:auto;border:1px solid rgba(255,215,0,.18);border-radius:14px;">
-      <table style="width:100%;border-collapse:collapse;min-width:860px;">
+      <table style="width:100%;border-collapse:collapse;min-width:980px;">
         <thead>
           <tr style="background:rgba(255,215,0,.08);">
             <th style="text-align:left;padding:10px;">Data</th>
             <th style="text-align:left;padding:10px;">Categoria</th>
             <th style="text-align:left;padding:10px;">Descrição</th>
             <th style="text-align:left;padding:10px;">Valor</th>
+            <th style="text-align:left;padding:10px;">Ações</th>
           </tr>
         </thead>
         <tbody>
-          ${linhas || `<tr><td style="padding:10px;" colspan="4">Nenhuma despesa cadastrada neste mês.</td></tr>`}
+          ${linhas || `<tr><td style="padding:10px;" colspan="5">Nenhuma despesa cadastrada neste mês.</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -561,7 +574,7 @@ app.post("/financeiro/despesa", requireLogin, async (req, res) => {
   return res.redirect(mes ? `/financeiro?mes=${encodeURIComponent(mes)}` : "/financeiro");
 });
 
-// ===== DASHBOARD (COM FILTRO POR MÊS + AÇÕES STATUS) =====
+// ===== DASHBOARD (STATUS + EXCLUIR + PDF BOTÃO NO FILTRO) =====
 app.get("/dashboard", requireLogin, async (req, res) => {
   const mesParam = String(req.query.mes || "").trim();
   const { start: ini, end: fim, key: mesKey } = monthRangeFromKey(mesParam || monthKeyFromDate(new Date()));
@@ -597,16 +610,25 @@ app.get("/dashboard", requireLogin, async (req, res) => {
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(p.status)}</td>
 
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
-            <form method="POST" action="/pedido/${p._id}/status?mes=${encodeURIComponent(mesKey)}"
-              style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-              <select name="status"
-                style="padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-                ${statusOptions(p.status)}
-              </select>
-              <button style="background:gold;color:black;padding:8px 10px;border:none;border-radius:10px;font-weight:700;">
-                Atualizar
-              </button>
-            </form>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <form method="POST" action="/pedido/${p._id}/status?mes=${encodeURIComponent(mesKey)}"
+                style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0;">
+                <select name="status"
+                  style="padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+                  ${statusOptions(p.status)}
+                </select>
+                <button style="background:gold;color:black;padding:8px 10px;border:none;border-radius:10px;font-weight:700;">
+                  Atualizar
+                </button>
+              </form>
+
+              <form method="POST" action="/pedido/${p._id}/delete?mes=${encodeURIComponent(mesKey)}"
+                style="margin:0;" onsubmit="return confirm('Excluir este pedido?');">
+                <button style="background:#222;color:#fff;padding:8px 10px;border:1px solid rgba(255,215,0,.25);border-radius:10px;cursor:pointer;">
+                  Excluir
+                </button>
+              </form>
+            </div>
           </td>
         </tr>
       `;
@@ -634,7 +656,7 @@ app.get("/dashboard", requireLogin, async (req, res) => {
 
     <h3 style="color:gold;margin:18px 0 10px;">Últimos pedidos (lista geral)</h3>
     <div style="overflow:auto;border:1px solid rgba(255,215,0,.18);border-radius:14px;">
-      <table style="width:100%;border-collapse:collapse;min-width:1040px;">
+      <table style="width:100%;border-collapse:collapse;min-width:1100px;">
         <thead>
           <tr style="background:rgba(255,215,0,.08);">
             <th style="text-align:left;padding:10px;">Pedido</th>
@@ -658,17 +680,30 @@ app.get("/dashboard", requireLogin, async (req, res) => {
   res.send(layout("Dashboard", conteudo));
 });
 
-// ===== ATUALIZAR STATUS (SÓ STATUS) =====
+// ===== ATUALIZAR STATUS =====
 app.post("/pedido/:id/status", requireLogin, async (req, res) => {
   const novoStatus = String(req.body.status || "").trim();
   if (!STATUS_LIST.includes(novoStatus)) {
     return res.send(layout("Erro", `<p>Status inválido. <a style="color:gold" href="/dashboard">Voltar</a></p>`));
   }
-
   await Pedido.findByIdAndUpdate(req.params.id, { status: novoStatus });
 
   const mes = String(req.query.mes || "").trim();
   return res.redirect(mes ? `/dashboard?mes=${encodeURIComponent(mes)}` : "/dashboard");
+});
+
+// ===== EXCLUIR PEDIDO =====
+app.post("/pedido/:id/delete", requireLogin, async (req, res) => {
+  await Pedido.findByIdAndDelete(req.params.id);
+  const mes = String(req.query.mes || "").trim();
+  return res.redirect(mes ? `/dashboard?mes=${encodeURIComponent(mes)}` : "/dashboard");
+});
+
+// ===== EXCLUIR DESPESA =====
+app.post("/despesa/:id/delete", requireLogin, async (req, res) => {
+  await Despesa.findByIdAndDelete(req.params.id);
+  const mes = String(req.query.mes || "").trim();
+  return res.redirect(mes ? `/financeiro?mes=${encodeURIComponent(mes)}` : "/financeiro");
 });
 
 // ===== NOVO PEDIDO =====
@@ -711,7 +746,7 @@ app.get("/novo", requireLogin, async (req, res) => {
         </div>
 
         <div style="margin-bottom:10px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Valor (aceita 35,50 ou 35.50)</div>
+          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Valor</div>
           <input name="valor" placeholder="Ex: 35,00" required
             style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
         </div>
@@ -758,6 +793,66 @@ app.post("/pedido", requireLogin, async (req, res) => {
   });
 
   res.redirect("/dashboard");
+});
+
+// ===== RELATÓRIO PDF =====
+app.get("/relatorio", requireLogin, async (req, res) => {
+  const mesParam = String(req.query.mes || "").trim();
+  const { start: ini, end: fim, key: mesKey } = monthRangeFromKey(mesParam || monthKeyFromDate(new Date()));
+
+  const pedidosMes = await Pedido.find({ criadoEm: { $gte: ini, $lt: fim } }).populate("clienteId").sort({ criadoEm: 1 });
+  const despesasMes = await Despesa.find({ data: { $gte: ini, $lt: fim } }).sort({ data: 1 });
+
+  const faturamento = pedidosMes
+    .filter((p) => p.status === "Pago")
+    .reduce((t, p) => t + Number(p.valor || 0), 0);
+
+  const despesas = despesasMes.reduce((t, d) => t + Number(d.valor || 0), 0);
+  const lucro = faturamento - despesas;
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="relatorio-${mesKey}.pdf"`);
+
+  const doc = new PDFDocument({ size: "A4", margin: 40 });
+  doc.pipe(res);
+
+  doc.fontSize(18).text("Atlas Creative - Relatório Mensal", { align: "left" });
+  doc.moveDown(0.2);
+  doc.fontSize(12).text(`Mês: ${monthLabelPT(mesKey)}`);
+  doc.text(`Gerado em: ${fmtDateBR(new Date())}`);
+  doc.moveDown();
+
+  doc.fontSize(14).text("Resumo", { underline: true });
+  doc.moveDown(0.5);
+  doc.fontSize(12).text(`Faturamento (Pago): R$ ${money(faturamento)}`);
+  doc.text(`Despesas: R$ ${money(despesas)}`);
+  doc.text(`Lucro líquido: R$ ${money(lucro)}`);
+  doc.moveDown();
+
+  doc.fontSize(14).text("Pedidos do mês", { underline: true });
+  doc.moveDown(0.5);
+  doc.fontSize(10).text("Pedido | Data | Cliente | Produto | Valor | Status");
+  doc.moveDown(0.3);
+
+  pedidosMes.forEach((p) => {
+    const num = String(p.numero).padStart(4, "0");
+    const cli = p.clienteId?.nome ? p.clienteId.nome : "-";
+    doc.text(
+      `#${num} | ${fmtDateBR(p.criadoEm)} | ${cli} | ${p.produto} | R$ ${money(p.valor)} | ${p.status}`
+    );
+  });
+
+  doc.moveDown();
+  doc.fontSize(14).text("Despesas do mês", { underline: true });
+  doc.moveDown(0.5);
+  doc.fontSize(10).text("Data | Categoria | Descrição | Valor");
+  doc.moveDown(0.3);
+
+  despesasMes.forEach((d) => {
+    doc.text(`${fmtDateBR(d.data)} | ${d.categoria} | ${d.descricao} | R$ ${money(d.valor)}`);
+  });
+
+  doc.end();
 });
 
 const PORT = process.env.PORT || 3000;
