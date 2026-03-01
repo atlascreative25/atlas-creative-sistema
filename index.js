@@ -27,121 +27,7 @@ mongoose
   .then(() => console.log("MongoDB conectado"))
   .catch((err) => console.log("Erro MongoDB:", err));
 
-// ===== MODELS =====
-const CounterSchema = new mongoose.Schema({
-  _id: String,
-  seq: { type: Number, default: 0 },
-});
-const Counter = mongoose.model("Counter", CounterSchema);
-
-const ClienteSchema = new mongoose.Schema(
-  {
-    nome: { type: String, required: true },
-    whatsapp: { type: String, default: "" },
-    observacoes: { type: String, default: "" },
-    criadoEm: { type: Date, default: Date.now },
-  },
-  { versionKey: false }
-);
-const Cliente = mongoose.model("Cliente", ClienteSchema);
-
-// Tipos de produto + preço sugerido
-const ProdutoTipoSchema = new mongoose.Schema(
-  {
-    nome: { type: String, required: true, unique: true },
-    precoSugerido: { type: Number, default: 0 },
-    criadoEm: { type: Date, default: Date.now },
-  },
-  { versionKey: false }
-);
-const ProdutoTipo = mongoose.model("ProdutoTipo", ProdutoTipoSchema);
-
-const ChecklistSchema = new mongoose.Schema(
-  {
-    arteRecebida: { type: Boolean, default: false },
-    arteAprovada: { type: Boolean, default: false },
-    impresso: { type: Boolean, default: false },
-    cortado: { type: Boolean, default: false },
-    entregue: { type: Boolean, default: false },
-  },
-  { _id: false }
-);
-
-// Controle de entrega/retirada
-const EntregaSchema = new mongoose.Schema(
-  {
-    tipo: { type: String, default: "Retirada" }, // Retirada / Motoboy / Correios / Entrega própria
-    data: { type: Date, default: null },
-    quemRetirou: { type: String, default: "" },
-    observacao: { type: String, default: "" },
-  },
-  { _id: false }
-);
-
-const PedidoSchema = new mongoose.Schema(
-  {
-    numero: { type: Number, required: true, unique: true },
-    clienteId: { type: mongoose.Schema.Types.ObjectId, ref: "Cliente", default: null },
-
-    tipoProduto: { type: String, default: "" },
-    produto: { type: String, required: true },
-
-    valor: { type: Number, required: true },
-    sinal: { type: Number, default: 0 },
-
-    status: { type: String, required: true },
-    anotacoes: { type: String, default: "" },
-
-    arquivado: { type: Boolean, default: false },
-    checklist: { type: ChecklistSchema, default: () => ({}) },
-
-    entrega: { type: EntregaSchema, default: () => ({}) },
-
-    criadoEm: { type: Date, default: Date.now },
-  },
-  { versionKey: false }
-);
-const Pedido = mongoose.model("Pedido", PedidoSchema);
-
-const DespesaSchema = new mongoose.Schema(
-  {
-    descricao: { type: String, required: true },
-    categoria: { type: String, default: "Geral" },
-    valor: { type: Number, required: true },
-    data: { type: Date, default: Date.now },
-    criadoEm: { type: Date, default: Date.now },
-  },
-  { versionKey: false }
-);
-const Despesa = mongoose.model("Despesa", DespesaSchema);
-
-// ===== CONSTANTES =====
-const STATUS_LIST = [
-  "Orçamento",
-  "Aguardando pagamento",
-  "Aguardando saldo",
-  "Pago",
-  "Em produção",
-  "Pronto",
-  "Entregue",
-  "Cancelado",
-];
-
-const STATUS_PENDENTES = new Set(["Orçamento", "Aguardando pagamento", "Aguardando saldo", "Em produção"]);
-const STATUS_PAGOS = new Set(["Pago", "Pronto", "Entregue"]);
-
-const ENTREGA_TIPOS = ["Retirada", "Motoboy", "Correios", "Entrega própria"];
-
 // ===== HELPERS =====
-async function getNextNumero() {
-  const counter = await Counter.findOneAndUpdate(
-    { _id: "pedido" },
-    { $inc: { seq: 1 } },
-    { new: true, upsert: true }
-  );
-  return counter.seq;
-}
-
 function requireLogin(req, res, next) {
   if (!req.session.logado) return res.redirect("/");
   next();
@@ -242,13 +128,6 @@ function monthLabelPT(key) {
   return `${names[parsed.month - 1]} ${parsed.year}`;
 }
 
-function statusOptions(selected) {
-  return STATUS_LIST.map((s) => {
-    const sel = s === selected ? "selected" : "";
-    return `<option ${sel}>${esc(s)}</option>`;
-  }).join("");
-}
-
 function onlyDigits(s) {
   return String(s || "").replace(/\D/g, "");
 }
@@ -260,89 +139,16 @@ function waLinkBR(whatsapp) {
   return `https://wa.me/${phone}`;
 }
 
-function waLinkWithText(whatsapp, text) {
-  const base = waLinkBR(whatsapp);
-  if (!base) return "";
-  const q = encodeURIComponent(String(text || ""));
-  return `${base}?text=${q}`;
-}
-
-function searchBoxHTML({ basePath, q, extraQuery = {} }) {
-  const hidden = Object.entries(extraQuery)
-    .filter(([_, v]) => v !== "" && v !== null && v !== undefined)
-    .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`)
+function statusOptions(list, selected) {
+  return list
+    .map((s) => `<option ${s === selected ? "selected" : ""}>${esc(s)}</option>`)
     .join("");
-
-  return `
-    <form method="GET" action="${esc(basePath)}" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px;">
-      ${hidden}
-      <input name="q" value="${esc(q || "")}" placeholder="Buscar..."
-        style="flex:1;min-width:240px;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-      <button style="background:gold;color:black;padding:10px 14px;border:none;border-radius:10px;font-weight:800;cursor:pointer;">
-        Buscar
-      </button>
-      ${q ? `<a href="${esc(basePath)}${Object.keys(extraQuery).length ? "?" + new URLSearchParams(extraQuery).toString() : ""}"
-              style="color:gold;text-decoration:none;font-weight:800;">Limpar</a>` : ""}
-    </form>
-  `;
 }
 
-function monthControlsHTML({ selectedKey, basePath, q = "", showPdf = true, showCsvPedidos = true, showCsvDespesas = true, extraQS = {} }) {
-  const now = new Date();
-  const opts = [];
-  for (let i = 0; i < 12; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const k = monthKeyFromDate(d);
-    const sel = k === selectedKey ? "selected" : "";
-    opts.push(`<option value="${esc(k)}" ${sel}>${esc(monthLabelPT(k))}</option>`);
-  }
-
-  const qs = new URLSearchParams({ ...extraQS });
-  if (q) qs.set("q", q);
-
-  return `
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px;">
-      <div style="opacity:.8;font-size:12px;">Mês:</div>
-      <select id="mesSel"
-        style="padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-        ${opts.join("")}
-      </select>
-
-      ${showPdf ? `
-        <a href="/relatorio?mes=${encodeURIComponent(selectedKey)}"
-          style="background:gold;color:black;padding:8px 12px;border-radius:10px;text-decoration:none;font-weight:800;">
-          Baixar PDF (mês)
-        </a>` : ""}
-
-      ${showCsvPedidos ? `
-        <a href="/export/pedidos.csv?mes=${encodeURIComponent(selectedKey)}"
-          style="background:#222;color:#fff;padding:8px 12px;border-radius:10px;text-decoration:none;font-weight:800;border:1px solid rgba(255,215,0,.25);">
-          Exportar Pedidos (CSV)
-        </a>` : ""}
-
-      ${showCsvDespesas ? `
-        <a href="/export/despesas.csv?mes=${encodeURIComponent(selectedKey)}"
-          style="background:#222;color:#fff;padding:8px 12px;border-radius:10px;text-decoration:none;font-weight:800;border:1px solid rgba(255,215,0,.25);">
-          Exportar Despesas (CSV)
-        </a>` : ""}
-
-      <script>
-        (function(){
-          const s = document.getElementById('mesSel');
-          s.addEventListener('change', function(){
-            const v = s.value;
-            const base = '${basePath}?mes=' + encodeURIComponent(v);
-            const extra = '${esc(qs.toString())}'.replaceAll('&amp;','&');
-            window.location.href = base + (extra ? '&' + extra : '');
-          });
-        })();
-      </script>
-    </div>
-  `;
-}
-
-function entregaOptions(selected) {
-  return ENTREGA_TIPOS.map((t) => `<option ${t === selected ? "selected" : ""}>${esc(t)}</option>`).join("");
+function entregaOptions(list, selected) {
+  return list
+    .map((t) => `<option ${t === selected ? "selected" : ""}>${esc(t)}</option>`)
+    .join("");
 }
 
 function entregaResumo(entrega) {
@@ -354,11 +160,16 @@ function entregaResumo(entrega) {
   return e.tipo || "-";
 }
 
-// ===== Mensagens prontas WhatsApp =====
 function buildWhatsTemplates({ clienteNome, pedidoNumero, produtoDesc, tipoProduto, valor, sinal, saldo, status }) {
   const num = String(pedidoNumero || 0).padStart(4, "0");
   const tipo = tipoProduto ? `${tipoProduto} — ` : "";
-  const baseInfo = `Pedido #${num}\n${tipo}${produtoDesc}\nStatus: ${status}\nValor: R$ ${money(valor)}\nSinal: R$ ${money(sinal || 0)}\nSaldo: R$ ${money(saldo)}`;
+  const baseInfo =
+    `Pedido #${num}\n` +
+    `${tipo}${produtoDesc}\n` +
+    `Status: ${status}\n` +
+    `Valor: R$ ${money(valor)}\n` +
+    `Sinal: R$ ${money(sinal || 0)}\n` +
+    `Saldo: R$ ${money(saldo)}`;
 
   return [
     { key: "bomdia", label: "Bom dia, cliente especial!", text: `Bom dia, ${clienteNome}! 😊\n\n${baseInfo}` },
@@ -372,40 +183,6 @@ function buildWhatsTemplates({ clienteNome, pedidoNumero, produtoDesc, tipoProdu
   ];
 }
 
-function layout(titulo, conteudo) {
-  return `
-  <html>
-  <head>
-    <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <title>${esc(titulo)}</title>
-  </head>
-  <body style="margin:0;background:black;color:white;font-family:Arial">
-
-    <div style="padding:15px;border-bottom:1px solid #333;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-      <div>
-        <div style="color:gold;font-weight:bold;font-size:20px">Atlas Creative</div>
-        <div style="font-size:12px;opacity:.7">Sistema de Gestão</div>
-      </div>
-      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
-        <a href="/dashboard" style="color:gold;text-decoration:none">Dashboard</a>
-        <a href="/clientes" style="color:gold;text-decoration:none">Clientes</a>
-        <a href="/novo" style="color:gold;text-decoration:none">Novo Pedido</a>
-        <a href="/produtos" style="color:gold;text-decoration:none">Produtos</a>
-        <a href="/financeiro" style="color:gold;text-decoration:none">Financeiro</a>
-        <a href="/logout" style="color:white;opacity:.85;text-decoration:none">Sair</a>
-      </div>
-    </div>
-
-    <div style="max-width:1200px;margin:auto;padding:20px">
-      ${conteudo}
-    </div>
-
-  </body>
-  </html>
-  `;
-}
-
 function csvEscape(v) {
   const s = String(v ?? "");
   if (s.includes('"') || s.includes(",") || s.includes("\n")) {
@@ -414,16 +191,287 @@ function csvEscape(v) {
   return s;
 }
 
+// ===== LAYOUT NOVO =====
+function layout(titulo, conteudo) {
+  return `
+  <html>
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>${esc(titulo)}</title>
+    <style>
+      :root{
+        --bg:#070707;
+        --panel:#0f0f10;
+        --panel2:#121214;
+        --text:#ffffff;
+        --muted:rgba(255,255,255,.72);
+        --border:rgba(255,255,255,.12);
+        --gold:#d7b25a;
+        --gold2:#f5d36a;
+        --shadow: 0 10px 30px rgba(0,0,0,.45);
+        --radius:16px;
+      }
+      *{box-sizing:border-box}
+      body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,system-ui,-apple-system,Segoe UI,Roboto}
+      a{color:var(--gold);text-decoration:none}
+      a:hover{opacity:.9}
+      .topbar{
+        position:sticky;top:0;z-index:9;
+        background:rgba(7,7,7,.85);backdrop-filter: blur(10px);
+        border-bottom:1px solid var(--border);
+      }
+      .topbar-inner{
+        max-width:1200px;margin:auto;padding:14px 18px;
+        display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
+      }
+      .brand{display:flex;flex-direction:column;gap:2px}
+      .brand .title{color:var(--gold2);font-weight:900;font-size:20px;letter-spacing:.3px}
+      .brand .sub{font-size:12px;color:var(--muted)}
+      .nav{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+      .nav a{
+        padding:8px 10px;border-radius:12px;
+        border:1px solid transparent;
+        color:var(--gold2);font-weight:800;font-size:13px;
+      }
+      .nav a:hover{border-color:rgba(215,178,90,.35);background:rgba(215,178,90,.08)}
+      .nav .danger{color:rgba(255,255,255,.85)}
+      .container{max-width:1200px;margin:auto;padding:18px}
+      .h1{margin:0 0 10px;color:var(--gold2);font-size:22px}
+      .card{
+        background:linear-gradient(180deg,var(--panel),var(--panel2));
+        border:1px solid rgba(215,178,90,.18);
+        border-radius:var(--radius);
+        box-shadow:var(--shadow);
+        padding:14px;
+      }
+      .grid{display:grid;gap:12px}
+      .grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+      @media(max-width:900px){.grid-2,.grid-3{grid-template-columns:1fr}}
+      .muted{color:var(--muted)}
+      .kpi{display:flex;flex-direction:column;gap:6px}
+      .kpi .label{font-size:12px;color:var(--muted)}
+      .kpi .value{font-size:22px;font-weight:900;color:var(--gold2)}
+      .btn{
+        display:inline-flex;align-items:center;justify-content:center;gap:8px;
+        padding:10px 12px;border-radius:12px;
+        border:1px solid rgba(215,178,90,.25);
+        background:#151516;color:#fff;font-weight:900;cursor:pointer;
+      }
+      .btn:hover{background:#1a1a1c}
+      .btn-gold{
+        background:linear-gradient(180deg,var(--gold2),var(--gold));
+        color:#000;border:none;
+      }
+      .btn-gold:hover{filter:brightness(.98)}
+      .input, select, textarea{
+        width:100%;
+        padding:10px;border-radius:12px;
+        border:1px solid var(--border);
+        background:#0b0b0c;color:#fff;
+        outline:none;
+      }
+      textarea{resize:vertical}
+      .tablewrap{overflow:auto;border:1px solid rgba(215,178,90,.18);border-radius:var(--radius)}
+      table{width:100%;border-collapse:collapse;min-width:900px}
+      thead tr{background:rgba(215,178,90,.10)}
+      th,td{padding:10px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left;vertical-align:top}
+      .pill{
+        display:inline-flex;align-items:center;gap:6px;
+        padding:3px 8px;border-radius:999px;
+        border:1px solid rgba(215,178,90,.25);
+        background:rgba(215,178,90,.08);
+        font-size:11px;color:rgba(255,255,255,.85);font-weight:900;
+      }
+      .warn{border-color:rgba(245,211,106,.35);background:rgba(245,211,106,.10)}
+      .dangerpill{border-color:rgba(255,80,80,.35);background:rgba(255,80,80,.10)}
+      .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+      .spacer{height:10px}
+      .mini{font-size:12px;color:var(--muted)}
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <div class="title">Atlas Creative</div>
+          <div class="sub">Sistema de Gestão</div>
+        </div>
+        <div class="nav">
+          <a href="/dashboard">Dashboard</a>
+          <a href="/clientes">Clientes</a>
+          <a href="/novo">Novo Pedido</a>
+          <a href="/produtos">Produtos</a>
+          <a href="/estoque">Estoque</a>
+          <a href="/financeiro">Financeiro</a>
+          <a class="danger" href="/logout">Sair</a>
+        </div>
+      </div>
+    </div>
+    <div class="container">
+      ${conteudo}
+    </div>
+  </body>
+  </html>
+  `;
+}
+
+// ===== CONSTANTES =====
+const STATUS_LIST = [
+  "Orçamento",
+  "Aguardando pagamento",
+  "Aguardando saldo",
+  "Pago",
+  "Em produção",
+  "Pronto",
+  "Entregue",
+  "Cancelado",
+];
+
+const STATUS_PENDENTES = new Set(["Orçamento", "Aguardando pagamento", "Aguardando saldo", "Em produção"]);
+const STATUS_PAGOS = new Set(["Pago", "Pronto", "Entregue"]);
+
+const ENTREGA_TIPOS = ["Retirada", "Motoboy", "Correios", "Entrega própria"];
+
+// ===== MODELS =====
+const CounterSchema = new mongoose.Schema({
+  _id: String,
+  seq: { type: Number, default: 0 },
+});
+const Counter = mongoose.model("Counter", CounterSchema);
+
+async function getNextNumero() {
+  const counter = await Counter.findOneAndUpdate(
+    { _id: "pedido" },
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true }
+  );
+  return counter.seq;
+}
+
+const ClienteSchema = new mongoose.Schema(
+  {
+    nome: { type: String, required: true },
+    whatsapp: { type: String, default: "" },
+    observacoes: { type: String, default: "" },
+    criadoEm: { type: Date, default: Date.now },
+  },
+  { versionKey: false }
+);
+const Cliente = mongoose.model("Cliente", ClienteSchema);
+
+const ProdutoTipoSchema = new mongoose.Schema(
+  {
+    nome: { type: String, required: true, unique: true },
+    precoSugerido: { type: Number, default: 0 },
+    criadoEm: { type: Date, default: Date.now },
+  },
+  { versionKey: false }
+);
+const ProdutoTipo = mongoose.model("ProdutoTipo", ProdutoTipoSchema);
+
+const ChecklistSchema = new mongoose.Schema(
+  {
+    arteRecebida: { type: Boolean, default: false },
+    arteAprovada: { type: Boolean, default: false },
+    impresso: { type: Boolean, default: false },
+    cortado: { type: Boolean, default: false },
+    entregue: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
+const EntregaSchema = new mongoose.Schema(
+  {
+    tipo: { type: String, default: "Retirada" },
+    data: { type: Date, default: null },
+    quemRetirou: { type: String, default: "" },
+    observacao: { type: String, default: "" },
+  },
+  { _id: false }
+);
+
+const PedidoSchema = new mongoose.Schema(
+  {
+    numero: { type: Number, required: true, unique: true },
+    clienteId: { type: mongoose.Schema.Types.ObjectId, ref: "Cliente", default: null },
+
+    tipoProduto: { type: String, default: "" },
+    produto: { type: String, required: true },
+
+    valor: { type: Number, required: true },
+    sinal: { type: Number, default: 0 },
+
+    status: { type: String, required: true },
+    anotacoes: { type: String, default: "" },
+
+    arquivado: { type: Boolean, default: false },
+    checklist: { type: ChecklistSchema, default: () => ({}) },
+    entrega: { type: EntregaSchema, default: () => ({}) },
+
+    criadoEm: { type: Date, default: Date.now },
+  },
+  { versionKey: false }
+);
+const Pedido = mongoose.model("Pedido", PedidoSchema);
+
+const DespesaSchema = new mongoose.Schema(
+  {
+    descricao: { type: String, required: true },
+    categoria: { type: String, default: "Geral" },
+    valor: { type: Number, required: true },
+    data: { type: Date, default: Date.now },
+    criadoEm: { type: Date, default: Date.now },
+  },
+  { versionKey: false }
+);
+const Despesa = mongoose.model("Despesa", DespesaSchema);
+
+// ===== ESTOQUE =====
+const EstoqueItemSchema = new mongoose.Schema(
+  {
+    nome: { type: String, required: true },
+    categoria: { type: String, default: "Geral" },
+    unidade: { type: String, default: "un" },
+    quantidade: { type: Number, default: 0 },
+    minimo: { type: Number, default: 0 },
+    custo: { type: Number, default: 0 },
+    fornecedor: { type: String, default: "" },
+    local: { type: String, default: "" },
+    observacao: { type: String, default: "" },
+    criadoEm: { type: Date, default: Date.now },
+    atualizadoEm: { type: Date, default: Date.now },
+  },
+  { versionKey: false }
+);
+
+const EstoqueMovSchema = new mongoose.Schema(
+  {
+    itemId: { type: mongoose.Schema.Types.ObjectId, ref: "EstoqueItem", required: true },
+    tipo: { type: String, required: true }, // Entrada / Saída / Ajuste
+    quantidade: { type: Number, required: true },
+    motivo: { type: String, default: "" },
+    pedidoNumero: { type: Number, default: null },
+    custoUnitario: { type: Number, default: null },
+    criadoEm: { type: Date, default: Date.now },
+  },
+  { versionKey: false }
+);
+
+const EstoqueItem = mongoose.model("EstoqueItem", EstoqueItemSchema);
+const EstoqueMov = mongoose.model("EstoqueMov", EstoqueMovSchema);
+
 // ===== AUTH =====
 app.get("/", (req, res) => {
   if (req.session.logado) return res.redirect("/dashboard");
   res.send(`
   <body style="background:black;color:white;text-align:center;padding-top:100px;font-family:Arial">
-    <h1 style="color:gold">Atlas Creative</h1>
+    <h1 style="color:#f5d36a">Atlas Creative</h1>
     <form method="POST" action="/login">
-      <input name="email" placeholder="Email" required><br><br>
-      <input name="senha" type="password" placeholder="Senha" required><br><br>
-      <button style="background:gold;color:black;padding:10px 20px;border:none;border-radius:10px;font-weight:700">Entrar</button>
+      <input name="email" placeholder="Email" required style="padding:10px;border-radius:10px;border:1px solid #333;background:#0b0b0b;color:#fff"><br><br>
+      <input name="senha" type="password" placeholder="Senha" required style="padding:10px;border-radius:10px;border:1px solid #333;background:#0b0b0b;color:#fff"><br><br>
+      <button style="background:#f5d36a;color:black;padding:10px 20px;border:none;border-radius:10px;font-weight:800;cursor:pointer">Entrar</button>
     </form>
   </body>
   `);
@@ -435,7 +483,7 @@ app.post("/login", (req, res) => {
     req.session.logado = true;
     return res.redirect("/dashboard");
   }
-  res.send(layout("Login inválido", `<p>Login inválido. <a style="color:gold" href="/">Voltar</a></p>`));
+  res.send(layout("Login inválido", `<div class="card">Login inválido. <a href="/">Voltar</a></div>`));
 });
 
 app.get("/logout", (req, res) => {
@@ -448,18 +496,22 @@ app.get("/produtos", requireLogin, async (req, res) => {
   const query = q ? { nome: { $regex: q, $options: "i" } } : {};
   const itens = await ProdutoTipo.find(query).sort({ nome: 1 });
 
-  const busca = searchBoxHTML({ basePath: "/produtos", q });
+  const busca = `
+    <form method="GET" action="/produtos" class="row" style="margin:0 0 12px;">
+      <input class="input" name="q" value="${esc(q)}" placeholder="Buscar tipo de produto..." style="flex:1;min-width:260px;">
+      <button class="btn btn-gold" type="submit">Buscar</button>
+      ${q ? `<a class="btn" href="/produtos">Limpar</a>` : ""}
+    </form>
+  `;
 
   const linhas = itens
     .map((p) => `
       <tr>
-        <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(p.nome)}</td>
-        <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${money(p.precoSugerido)}</td>
-        <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
-          <form method="POST" action="/produtos/${p._id}/delete" onsubmit="return confirm('Excluir este tipo de produto?');">
-            <button style="background:#222;color:#fff;padding:8px 10px;border:1px solid rgba(255,215,0,.25);border-radius:10px;cursor:pointer;">
-              Excluir
-            </button>
+        <td>${esc(p.nome)}</td>
+        <td>R$ ${money(p.precoSugerido)}</td>
+        <td>
+          <form method="POST" action="/produtos/${p._id}/delete" onsubmit="return confirm('Excluir este tipo de produto?');" style="margin:0;">
+            <button class="btn" type="submit">Excluir</button>
           </form>
         </td>
       </tr>
@@ -467,44 +519,54 @@ app.get("/produtos", requireLogin, async (req, res) => {
     .join("");
 
   const conteudo = `
-    <h2 style="color:gold;margin:0 0 12px;">Produtos (tipos + preço sugerido)</h2>
+    <h2 class="h1">Produtos (tipos + preço sugerido)</h2>
     ${busca}
 
-    <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;max-width:560px;">
-      <h3 style="margin:0 0 10px;color:gold;font-size:16px;">Cadastrar tipo</h3>
-      <form method="POST" action="/produtos">
-        <div style="margin-bottom:10px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Nome do tipo</div>
-          <input name="nome" placeholder="Ex: Banner / Cartão / Adesivo" required
-            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-        </div>
+    <div class="grid grid-2">
+      <div class="card">
+        <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Cadastrar tipo</div>
+        <form method="POST" action="/produtos">
+          <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+              <div class="mini">Nome do tipo</div>
+              <input class="input" name="nome" placeholder="Ex: Banner / Cartão / Adesivo" required>
+            </div>
+            <div>
+              <div class="mini">Preço sugerido</div>
+              <input class="input" name="precoSugerido" placeholder="Ex: 35,00" required>
+            </div>
+          </div>
+          <div class="spacer"></div>
+          <button class="btn btn-gold" type="submit">Salvar tipo</button>
+        </form>
+      </div>
 
-        <div style="margin-bottom:12px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Preço sugerido</div>
-          <input name="precoSugerido" placeholder="Ex: 35,00" required
-            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+      <div class="card">
+        <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Dica</div>
+        <div class="muted">
+          O tipo serve pra puxar o preço sugerido no “Novo Pedido”. Você ainda pode editar o valor depois no pedido.
         </div>
-
-        <button style="background:gold;color:black;padding:10px 16px;border:none;border-radius:10px;font-weight:700;">
-          Salvar tipo
-        </button>
-      </form>
+      </div>
     </div>
 
-    <h3 style="color:gold;margin:18px 0 10px;">Tipos cadastrados</h3>
-    <div style="overflow:auto;border:1px solid rgba(255,215,0,.18);border-radius:14px;">
-      <table style="width:100%;border-collapse:collapse;min-width:780px;">
-        <thead>
-          <tr style="background:rgba(255,215,0,.08);">
-            <th style="text-align:left;padding:10px;">Tipo</th>
-            <th style="text-align:left;padding:10px;">Preço sugerido</th>
-            <th style="text-align:left;padding:10px;">Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${linhas || `<tr><td style="padding:10px;" colspan="3">Nenhum tipo cadastrado.</td></tr>`}
-        </tbody>
-      </table>
+    <div class="spacer"></div>
+
+    <div class="card">
+      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Tipos cadastrados</div>
+      <div class="tablewrap">
+        <table style="min-width:780px;">
+          <thead>
+            <tr>
+              <th>Tipo</th>
+              <th>Preço sugerido</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${linhas || `<tr><td colspan="3" class="muted" style="padding:12px;">Nenhum tipo cadastrado.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
     </div>
   `;
   res.send(layout("Produtos", conteudo));
@@ -513,13 +575,13 @@ app.get("/produtos", requireLogin, async (req, res) => {
 app.post("/produtos", requireLogin, async (req, res) => {
   const nome = String(req.body.nome || "").trim();
   const preco = parseMoneyBR(req.body.precoSugerido);
-  if (!nome) return res.send(layout("Erro", `<p>Nome inválido. <a style="color:gold" href="/produtos">Voltar</a></p>`));
-  if (!Number.isFinite(preco)) return res.send(layout("Erro", `<p>Preço inválido. <a style="color:gold" href="/produtos">Voltar</a></p>`));
+  if (!nome) return res.send(layout("Erro", `<div class="card">Nome inválido. <a href="/produtos">Voltar</a></div>`));
+  if (!Number.isFinite(preco)) return res.send(layout("Erro", `<div class="card">Preço inválido. <a href="/produtos">Voltar</a></div>`));
 
   try {
     await ProdutoTipo.create({ nome, precoSugerido: preco });
   } catch (e) {
-    return res.send(layout("Erro", `<p>Esse tipo já existe. <a style="color:gold" href="/produtos">Voltar</a></p>`));
+    return res.send(layout("Erro", `<div class="card">Esse tipo já existe. <a href="/produtos">Voltar</a></div>`));
   }
   res.redirect("/produtos");
 });
@@ -543,28 +605,30 @@ app.get("/clientes", requireLogin, async (req, res) => {
     : {};
 
   const clientes = await Cliente.find(query).sort({ criadoEm: -1 });
-  const buscaHTML = searchBoxHTML({ basePath: "/clientes", q });
+
+  const busca = `
+    <form method="GET" action="/clientes" class="row" style="margin:0 0 12px;">
+      <input class="input" name="q" value="${esc(q)}" placeholder="Buscar cliente/whatsapp/obs..." style="flex:1;min-width:260px;">
+      <button class="btn btn-gold" type="submit">Buscar</button>
+      ${q ? `<a class="btn" href="/clientes">Limpar</a>` : ""}
+    </form>
+  `;
 
   const linhas = clientes
     .map((c) => {
       const wa = waLinkBR(c.whatsapp);
       return `
         <tr>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
-            <a href="/clientes/${c._id}" style="color:gold;text-decoration:none;">
-              ${esc(c.nome)}
-            </a>
+          <td>
+            <a href="/clientes/${c._id}" style="font-weight:900;color:var(--gold2)">${esc(c.nome)}</a>
           </td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(c.whatsapp)}</td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(c.observacoes)}</td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
+          <td>${esc(c.whatsapp)}</td>
+          <td>${esc(c.observacoes)}</td>
+          <td>
             ${
               wa
-                ? `<a href="${esc(wa)}" target="_blank"
-                     style="background:gold;color:black;padding:8px 10px;border-radius:10px;text-decoration:none;font-weight:800;">
-                     WhatsApp
-                   </a>`
-                : `<span style="opacity:.6;font-size:12px;">Sem número</span>`
+                ? `<a class="btn btn-gold" href="${esc(wa)}" target="_blank">WhatsApp</a>`
+                : `<span class="muted">Sem número</span>`
             }
           </td>
         </tr>
@@ -573,48 +637,58 @@ app.get("/clientes", requireLogin, async (req, res) => {
     .join("");
 
   const conteudo = `
-    <h2 style="color:gold;margin:0 0 12px;">Clientes</h2>
-    ${buscaHTML}
+    <h2 class="h1">Clientes</h2>
+    ${busca}
 
-    <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;max-width:560px;">
-      <h3 style="margin:0 0 10px;color:gold;font-size:16px;">Cadastrar cliente</h3>
-      <form method="POST" action="/clientes">
-        <div style="margin-bottom:10px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Nome</div>
-          <input name="nome" required
-            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-        </div>
-        <div style="margin-bottom:10px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">WhatsApp</div>
-          <input name="whatsapp" placeholder="(21) 9xxxx-xxxx"
-            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-        </div>
-        <div style="margin-bottom:12px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Observações</div>
-          <input name="observacoes" placeholder="Ex: prefere retirada / cliente fixo"
-            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-        </div>
-        <button style="background:gold;color:black;padding:10px 16px;border:none;border-radius:10px;font-weight:700;">
-          Salvar cliente
-        </button>
-      </form>
+    <div class="grid grid-2">
+      <div class="card">
+        <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Cadastrar cliente</div>
+        <form method="POST" action="/clientes">
+          <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+              <div class="mini">Nome</div>
+              <input class="input" name="nome" required>
+            </div>
+            <div>
+              <div class="mini">WhatsApp</div>
+              <input class="input" name="whatsapp" placeholder="(21) 9xxxx-xxxx">
+            </div>
+          </div>
+          <div class="spacer"></div>
+          <div>
+            <div class="mini">Observações</div>
+            <input class="input" name="observacoes" placeholder="Ex: prefere retirada / cliente fixo">
+          </div>
+          <div class="spacer"></div>
+          <button class="btn btn-gold" type="submit">Salvar cliente</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Resumo</div>
+        <div class="muted">Total de clientes: <b style="color:#fff">${clientes.length}</b></div>
+      </div>
     </div>
 
-    <h3 style="color:gold;margin:18px 0 10px;">Lista de clientes</h3>
-    <div style="overflow:auto;border:1px solid rgba(255,215,0,.18);border-radius:14px;">
-      <table style="width:100%;border-collapse:collapse;min-width:900px;">
-        <thead>
-          <tr style="background:rgba(255,215,0,.08);">
-            <th style="text-align:left;padding:10px;">Nome</th>
-            <th style="text-align:left;padding:10px;">WhatsApp</th>
-            <th style="text-align:left;padding:10px;">Observações</th>
-            <th style="text-align:left;padding:10px;">Ação</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${linhas || `<tr><td style="padding:10px;" colspan="4">Nenhum cliente encontrado.</td></tr>`}
-        </tbody>
-      </table>
+    <div class="spacer"></div>
+
+    <div class="card">
+      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Lista</div>
+      <div class="tablewrap">
+        <table style="min-width:900px;">
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>WhatsApp</th>
+              <th>Observações</th>
+              <th>Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${linhas || `<tr><td colspan="4" class="muted" style="padding:12px;">Nenhum cliente encontrado.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
     </div>
   `;
 
@@ -631,10 +705,10 @@ app.post("/clientes", requireLogin, async (req, res) => {
   res.redirect("/clientes");
 });
 
-// ===== TELA DO CLIENTE + PDF/CSV =====
+// ===== TELA DO CLIENTE =====
 app.get("/clientes/:id", requireLogin, async (req, res) => {
   const cliente = await Cliente.findById(req.params.id);
-  if (!cliente) return res.send(layout("Cliente", `<p>Cliente não encontrado. <a style="color:gold" href="/clientes">Voltar</a></p>`));
+  if (!cliente) return res.send(layout("Cliente", `<div class="card">Cliente não encontrado. <a href="/clientes">Voltar</a></div>`));
 
   const pedidos = await Pedido.find({ clienteId: cliente._id }).sort({ criadoEm: -1 });
 
@@ -649,87 +723,78 @@ app.get("/clientes/:id", requireLogin, async (req, res) => {
   const linhas = pedidos
     .map((p) => {
       const num = String(p.numero).padStart(4, "0");
-      const badge = p.arquivado
-        ? `<span style="margin-left:8px;font-size:11px;opacity:.75;border:1px solid rgba(255,215,0,.25);padding:2px 6px;border-radius:999px;">Arquivado</span>`
-        : "";
+      const badge = p.arquivado ? `<span class="pill">Arquivado</span>` : "";
       const tipo = p.tipoProduto ? `${p.tipoProduto} — ` : "";
       return `
         <tr>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
-            <a href="/pedido/${p._id}" style="color:gold;text-decoration:none;font-weight:900;">#${esc(num)}</a>
-            ${badge}
-          </td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(tipo + p.produto)}</td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${money(p.valor)}</td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${money(p.sinal || 0)}</td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${money(saldoPedido(p.valor, p.sinal))}</td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(p.status)}</td>
+          <td><a href="/pedido/${p._id}" style="font-weight:900;color:var(--gold2)">#${esc(num)}</a> ${badge}</td>
+          <td>${esc(tipo + p.produto)}</td>
+          <td>R$ ${money(p.valor)}</td>
+          <td>R$ ${money(p.sinal || 0)}</td>
+          <td>R$ ${money(saldoPedido(p.valor, p.sinal))}</td>
+          <td>${esc(p.status)}</td>
         </tr>
       `;
     })
     .join("");
 
   const conteudo = `
-    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;">
-      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;min-width:320px;">
-        <h2 style="color:gold;margin:0 0 8px;">${esc(cliente.nome)}</h2>
-        <div style="opacity:.85;margin-bottom:8px;">WhatsApp: ${esc(cliente.whatsapp || "-")}</div>
-
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-          ${wa ? `<a href="${esc(wa)}" target="_blank"
-                   style="background:gold;color:black;padding:10px 12px;border-radius:10px;text-decoration:none;font-weight:900;">
-                   Abrir WhatsApp
-                 </a>` : ""}
-          <a href="/clientes" style="color:gold;text-decoration:none;font-weight:900;padding:10px 0;">← Voltar</a>
-        </div>
-
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;">
-          <a href="/clientes/${cliente._id}/relatorio.pdf"
-             style="background:#222;color:#fff;padding:10px 12px;border-radius:10px;text-decoration:none;font-weight:900;border:1px solid rgba(255,215,0,.25);">
-             PDF do Cliente
-          </a>
-          <a href="/clientes/${cliente._id}/pedidos.csv"
-             style="background:#222;color:#fff;padding:10px 12px;border-radius:10px;text-decoration:none;font-weight:900;border:1px solid rgba(255,215,0,.25);">
-             CSV do Cliente
-          </a>
-        </div>
-
-        <div style="opacity:.75;margin-top:10px;">Obs: ${esc(cliente.observacoes || "-")}</div>
+    <div class="row" style="justify-content:space-between;margin-bottom:10px;">
+      <div>
+        <h2 class="h1">${esc(cliente.nome)}</h2>
+        <div class="muted">WhatsApp: ${esc(cliente.whatsapp || "-")} • Obs: ${esc(cliente.observacoes || "-")}</div>
       </div>
-
-      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;min-width:280px;">
-        <div style="opacity:.75;font-size:12px;">Total (valor)</div>
-        <div style="color:gold;font-size:22px;font-weight:800;">R$ ${money(totalValor)}</div>
-        <div style="opacity:.75;font-size:12px;margin-top:12px;">Total (sinal)</div>
-        <div style="font-size:18px;font-weight:800;">R$ ${money(totalSinal)}</div>
-        <div style="opacity:.75;font-size:12px;margin-top:12px;">Total (saldo)</div>
-        <div style="font-size:18px;font-weight:800;">R$ ${money(totalSaldo)}</div>
+      <div class="row">
+        <a class="btn" href="/clientes">← Voltar</a>
+        ${wa ? `<a class="btn btn-gold" href="${esc(wa)}" target="_blank">Abrir WhatsApp</a>` : ""}
+        <a class="btn" href="/clientes/${cliente._id}/relatorio.pdf">PDF do Cliente</a>
+        <a class="btn" href="/clientes/${cliente._id}/pedidos.csv">CSV do Cliente</a>
       </div>
     </div>
 
-    <h3 style="color:gold;margin:18px 0 10px;">Pedidos do cliente</h3>
-    <div style="overflow:auto;border:1px solid rgba(255,215,0,.18);border-radius:14px;">
-      <table style="width:100%;border-collapse:collapse;min-width:980px;">
-        <thead>
-          <tr style="background:rgba(255,215,0,.08);">
-            <th style="text-align:left;padding:10px;">Pedido</th>
-            <th style="text-align:left;padding:10px;">Produto</th>
-            <th style="text-align:left;padding:10px;">Valor</th>
-            <th style="text-align:left;padding:10px;">Sinal</th>
-            <th style="text-align:left;padding:10px;">Saldo</th>
-            <th style="text-align:left;padding:10px;">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${linhas || `<tr><td style="padding:10px;" colspan="6">Nenhum pedido para este cliente ainda.</td></tr>`}
-        </tbody>
-      </table>
+    <div class="grid grid-3">
+      <div class="card kpi">
+        <div class="label">Total (valor)</div>
+        <div class="value">R$ ${money(totalValor)}</div>
+      </div>
+      <div class="card kpi">
+        <div class="label">Total (sinal)</div>
+        <div class="value">R$ ${money(totalSinal)}</div>
+      </div>
+      <div class="card kpi">
+        <div class="label">Total (saldo)</div>
+        <div class="value">R$ ${money(totalSaldo)}</div>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="card">
+      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Pedidos do cliente</div>
+      <div class="tablewrap">
+        <table style="min-width:980px;">
+          <thead>
+            <tr>
+              <th>Pedido</th>
+              <th>Produto</th>
+              <th>Valor</th>
+              <th>Sinal</th>
+              <th>Saldo</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${linhas || `<tr><td colspan="6" class="muted" style="padding:12px;">Nenhum pedido para este cliente ainda.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
     </div>
   `;
 
   res.send(layout("Cliente", conteudo));
 });
 
+// CSV cliente
 app.get("/clientes/:id/pedidos.csv", requireLogin, async (req, res) => {
   const cliente = await Cliente.findById(req.params.id);
   if (!cliente) return res.status(404).send("Cliente não encontrado");
@@ -781,6 +846,7 @@ app.get("/clientes/:id/pedidos.csv", requireLogin, async (req, res) => {
   res.send(lines.join("\n"));
 });
 
+// PDF cliente
 app.get("/clientes/:id/relatorio.pdf", requireLogin, async (req, res) => {
   const cliente = await Cliente.findById(req.params.id);
   if (!cliente) return res.status(404).send("Cliente não encontrado");
@@ -819,12 +885,10 @@ app.get("/clientes/:id/relatorio.pdf", requireLogin, async (req, res) => {
 
   pedidos.forEach((p) => {
     const num = String(p.numero).padStart(4, "0");
-    const e = p.entrega || {};
-    const entregaTxt = entregaResumo(e);
     doc.text(
       `#${num} | ${fmtDateBR(p.criadoEm)} | ${p.tipoProduto || "-"} | ${p.produto} | R$ ${money(p.valor)} | R$ ${money(
         p.sinal || 0
-      )} | R$ ${money(saldoPedido(p.valor, p.sinal))} | ${p.status} | ${entregaTxt}`
+      )} | R$ ${money(saldoPedido(p.valor, p.sinal))} | ${p.status} | ${entregaResumo(p.entrega)}`
     );
   });
 
@@ -835,7 +899,7 @@ app.get("/clientes/:id/relatorio.pdf", requireLogin, async (req, res) => {
 app.get("/novo", requireLogin, async (req, res) => {
   const clientes = await Cliente.find().sort({ nome: 1 });
   if (!clientes.length) {
-    return res.send(layout("Novo Pedido", `<p>Cadastre um cliente primeiro. <a style="color:gold" href="/clientes">Ir para clientes</a></p>`));
+    return res.send(layout("Novo Pedido", `<div class="card">Cadastre um cliente primeiro. <a href="/clientes">Ir para clientes</a></div>`));
   }
 
   const tipos = await ProdutoTipo.find().sort({ nome: 1 });
@@ -850,59 +914,53 @@ app.get("/novo", requireLogin, async (req, res) => {
   ].join("");
 
   const conteudo = `
-    <h2 style="color:gold;margin:0 0 12px;">Novo Pedido</h2>
+    <h2 class="h1">Novo Pedido</h2>
 
-    <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;max-width:640px;">
+    <div class="card" style="max-width:720px;">
       <form method="POST" action="/pedido">
 
-        <div style="margin-bottom:10px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Cliente</div>
-          <select name="clienteId" required
-            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-            ${clientesOpt}
-          </select>
-        </div>
-
-        <div style="margin-bottom:10px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Tipo de produto (puxa preço sugerido)</div>
-          <select id="tipoProduto" name="tipoProduto"
-            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-            ${tiposOpt}
-          </select>
-          <div style="opacity:.6;font-size:12px;margin-top:6px;">Cadastre tipos em: <a href="/produtos" style="color:gold">Produtos</a></div>
-        </div>
-
-        <div style="margin-bottom:10px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Descrição (detalhes)</div>
-          <input name="produto" placeholder="Ex: 1000 unid, papel couchê 300g, frente/verso..."
-            required
-            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-        </div>
-
-        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:10px;">
+        <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
           <div>
-            <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Valor total</div>
-            <input id="valor" name="valor" placeholder="Ex: 120,00" required
-              style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+            <div class="mini">Cliente</div>
+            <select class="input" name="clienteId" required>${clientesOpt}</select>
           </div>
           <div>
-            <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Sinal / Entrada (opcional)</div>
-            <input id="sinal" name="sinal" placeholder="Ex: 50,00"
-              style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+            <div class="mini">Tipo de produto (puxa preço sugerido)</div>
+            <select class="input" id="tipoProduto" name="tipoProduto">${tiposOpt}</select>
+            <div class="mini" style="margin-top:6px;">Cadastre tipos em: <a href="/produtos">Produtos</a></div>
           </div>
         </div>
 
-        <div style="margin-bottom:12px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Status</div>
-          <select name="status"
-            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-            ${statusOptions("Orçamento")}
-          </select>
+        <div class="spacer"></div>
+
+        <div>
+          <div class="mini">Descrição (detalhes)</div>
+          <input class="input" name="produto" required placeholder="Ex: 1000 unid, papel couchê 300g, frente/verso...">
         </div>
 
-        <button style="background:gold;color:black;padding:10px 16px;border:none;border-radius:10px;font-weight:700;">
-          Salvar Pedido
-        </button>
+        <div class="spacer"></div>
+
+        <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <div class="mini">Valor total</div>
+            <input class="input" id="valor" name="valor" required placeholder="Ex: 120,00">
+          </div>
+          <div>
+            <div class="mini">Sinal / Entrada (opcional)</div>
+            <input class="input" id="sinal" name="sinal" placeholder="Ex: 50,00">
+          </div>
+        </div>
+
+        <div class="spacer"></div>
+
+        <div>
+          <div class="mini">Status</div>
+          <select class="input" name="status">${statusOptions(STATUS_LIST, "Orçamento")}</select>
+        </div>
+
+        <div class="spacer"></div>
+
+        <button class="btn btn-gold" type="submit">Salvar Pedido</button>
       </form>
     </div>
 
@@ -931,14 +989,14 @@ app.post("/pedido", requireLogin, async (req, res) => {
   const numero = await getNextNumero();
 
   const v = parseMoneyBR(valor);
-  if (!Number.isFinite(v)) return res.send(layout("Erro", `<p>Valor inválido. <a style="color:gold" href="/novo">Voltar</a></p>`));
+  if (!Number.isFinite(v)) return res.send(layout("Erro", `<div class="card">Valor inválido. <a href="/novo">Voltar</a></div>`));
 
   const s = String(sinal || "").trim() ? parseMoneyBR(sinal) : 0;
-  if (!Number.isFinite(s)) return res.send(layout("Erro", `<p>Sinal inválido. <a style="color:gold" href="/novo">Voltar</a></p>`));
-  const sinalVal = Math.max(0, Math.min(v, s)); // não deixa sinal maior que valor
+  if (!Number.isFinite(s)) return res.send(layout("Erro", `<div class="card">Sinal inválido. <a href="/novo">Voltar</a></div>`));
+  const sinalVal = Math.max(0, Math.min(v, s));
 
   const st = String(status || "").trim();
-  if (!STATUS_LIST.includes(st)) return res.send(layout("Erro", `<p>Status inválido. <a style="color:gold" href="/novo">Voltar</a></p>`));
+  if (!STATUS_LIST.includes(st)) return res.send(layout("Erro", `<div class="card">Status inválido. <a href="/novo">Voltar</a></div>`));
 
   await Pedido.create({
     numero,
@@ -953,7 +1011,7 @@ app.post("/pedido", requireLogin, async (req, res) => {
   res.redirect("/dashboard");
 });
 
-// ===== DASHBOARD (✅ coluna Entrega/Retirada) =====
+// ===== DASHBOARD =====
 app.get("/dashboard", requireLogin, async (req, res) => {
   const mesParam = String(req.query.mes || "").trim();
   const { start: ini, end: fim, key: mesKey } = monthRangeFromKey(mesParam || monthKeyFromDate(new Date()));
@@ -974,14 +1032,16 @@ app.get("/dashboard", requireLogin, async (req, res) => {
 
   if (q) {
     const qlow = q.toLowerCase();
-    pedidosLista = pedidosLista.filter((p) => {
-      const num = String(p.numero || "");
-      const cli = (p.clienteId?.nome || "").toLowerCase();
-      const prod = (p.produto || "").toLowerCase();
-      const tipo = (p.tipoProduto || "").toLowerCase();
-      const st = (p.status || "").toLowerCase();
-      return num.includes(qlow) || cli.includes(qlow) || prod.includes(qlow) || tipo.includes(qlow) || st.includes(qlow);
-    }).slice(0, 90);
+    pedidosLista = pedidosLista
+      .filter((p) => {
+        const num = String(p.numero || "");
+        const cli = (p.clienteId?.nome || "").toLowerCase();
+        const prod = (p.produto || "").toLowerCase();
+        const tipo = (p.tipoProduto || "").toLowerCase();
+        const st = (p.status || "").toLowerCase();
+        return num.includes(qlow) || cli.includes(qlow) || prod.includes(qlow) || tipo.includes(qlow) || st.includes(qlow);
+      })
+      .slice(0, 90);
   } else {
     pedidosLista = pedidosLista.slice(0, 90);
   }
@@ -989,72 +1049,66 @@ app.get("/dashboard", requireLogin, async (req, res) => {
   const pendentes = pedidosLista.filter((p) => !p.arquivado && STATUS_PENDENTES.has(p.status));
   const pagos = pedidosLista.filter((p) => !p.arquivado && STATUS_PAGOS.has(p.status));
 
-  const toggleLink = (() => {
-    const qs = new URLSearchParams();
-    qs.set("mes", mesKey);
-    if (q) qs.set("q", q);
-    if (!showArchived) qs.set("show_archived", "1");
-    const text = showArchived ? "Ocultar arquivados" : "Mostrar arquivados";
-    const href = showArchived
-      ? `/dashboard?mes=${encodeURIComponent(mesKey)}${q ? `&q=${encodeURIComponent(q)}` : ""}`
-      : `/dashboard?${qs.toString()}`;
-    return `<a href="${esc(href)}" style="color:gold;text-decoration:none;font-weight:900;">${esc(text)}</a>`;
-  })();
+  const itensBaixo = (await EstoqueItem.find().sort({ atualizadoEm: -1 }))
+    .filter((i) => Number(i.quantidade || 0) <= Number(i.minimo || 0))
+    .slice(0, 6);
 
-  const busca = searchBoxHTML({ basePath: "/dashboard", q, extraQuery: { mes: mesKey, show_archived: showArchived ? "1" : "" } });
+  const busca = `
+    <form method="GET" action="/dashboard" class="row" style="margin:10px 0 12px;">
+      <input type="hidden" name="mes" value="${esc(mesKey)}">
+      ${showArchived ? `<input type="hidden" name="show_archived" value="1">` : ""}
+      <input class="input" name="q" value="${esc(q)}" placeholder="Buscar pedido, cliente, produto, status..." style="flex:1;min-width:260px;">
+      <button class="btn btn-gold" type="submit">Buscar</button>
+      ${q ? `<a class="btn" href="/dashboard?mes=${encodeURIComponent(mesKey)}${showArchived ? "&show_archived=1" : ""}">Limpar</a>` : ""}
+    </form>
+  `;
 
-  const rowsList = (arr) =>
+  const toggleLink = showArchived
+    ? `/dashboard?mes=${encodeURIComponent(mesKey)}${q ? `&q=${encodeURIComponent(q)}` : ""}`
+    : `/dashboard?mes=${encodeURIComponent(mesKey)}${q ? `&q=${encodeURIComponent(q)}` : ""}&show_archived=1`;
+
+  const toggleText = showArchived ? "Ocultar arquivados" : "Mostrar arquivados";
+
+  const cardList = (arr) =>
     arr
       .map((p) => {
         const num = String(p.numero).padStart(4, "0");
         const clienteNome = p.clienteId?.nome || "-";
         const tipo = p.tipoProduto ? `${p.tipoProduto} — ` : "";
         const sal = saldoPedido(p.valor, p.sinal);
-        const ent = entregaResumo(p.entrega);
         return `
           <div style="border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:10px;margin-bottom:8px;">
-            <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-              <a href="/pedido/${p._id}" style="color:gold;text-decoration:none;font-weight:900;">#${esc(num)}</a>
-              <div style="opacity:.85">${esc(p.status)}</div>
+            <div class="row" style="justify-content:space-between;">
+              <a href="/pedido/${p._id}" style="color:var(--gold2);font-weight:900;">#${esc(num)}</a>
+              <span class="pill">${esc(p.status)}</span>
             </div>
-            <div style="opacity:.9;margin-top:6px;"><b>${esc(clienteNome)}</b> — ${esc(tipo + p.produto)}</div>
-            <div style="opacity:.85;margin-top:4px;">
-              Valor: R$ ${money(p.valor)} | Sinal: R$ ${money(p.sinal || 0)} | Saldo: R$ ${money(sal)}
-            </div>
-            <div style="opacity:.75;margin-top:4px;">Entrega: ${esc(ent)}</div>
+            <div style="margin-top:6px;"><b>${esc(clienteNome)}</b> — ${esc(tipo + p.produto)}</div>
+            <div class="mini" style="margin-top:4px;">Valor: R$ ${money(p.valor)} | Sinal: R$ ${money(p.sinal || 0)} | Saldo: R$ ${money(sal)}</div>
+            <div class="mini" style="margin-top:4px;">Entrega: ${esc(entregaResumo(p.entrega))}</div>
           </div>
         `;
       })
-      .join("") || `<div style="opacity:.7">Nada aqui.</div>`;
+      .join("") || `<div class="muted">Nada aqui.</div>`;
 
   const linhasTabela = pedidosLista
     .map((p) => {
       const num = String(p.numero).padStart(4, "0");
       const clienteNome = p.clienteId?.nome ? p.clienteId.nome : "-";
-      const badge = p.arquivado
-        ? `<span style="margin-left:8px;font-size:11px;opacity:.75;border:1px solid rgba(255,215,0,.25);padding:2px 6px;border-radius:999px;">Arquivado</span>`
-        : "";
+      const badge = p.arquivado ? `<span class="pill">Arquivado</span>` : "";
       const tipo = p.tipoProduto ? `${p.tipoProduto} — ` : "";
-      const ent = entregaResumo(p.entrega);
       return `
         <tr>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
-            <a href="/pedido/${p._id}" style="color:gold;text-decoration:none;font-weight:900;">#${esc(num)}</a>
-            ${badge}
-          </td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(clienteNome)}</td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(tipo + p.produto)}</td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${money(p.valor)}</td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${money(p.sinal || 0)}</td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${money(saldoPedido(p.valor, p.sinal))}</td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(p.status)}</td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(ent)}</td>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
-            <form method="POST" action="/pedido/${p._id}/toggle-archive?mes=${encodeURIComponent(mesKey)}&q=${encodeURIComponent(q)}&show_archived=${showArchived ? "1" : ""}"
-              style="margin:0;">
-              <button style="background:#222;color:#fff;padding:8px 10px;border:1px solid rgba(255,215,0,.25);border-radius:10px;cursor:pointer;">
-                ${p.arquivado ? "Desarquivar" : "Arquivar"}
-              </button>
+          <td><a href="/pedido/${p._id}" style="font-weight:900;color:var(--gold2)">#${esc(num)}</a> ${badge}</td>
+          <td>${esc(clienteNome)}</td>
+          <td>${esc(tipo + p.produto)}</td>
+          <td>R$ ${money(p.valor)}</td>
+          <td>R$ ${money(p.sinal || 0)}</td>
+          <td>R$ ${money(saldoPedido(p.valor, p.sinal))}</td>
+          <td>${esc(p.status)}</td>
+          <td>${esc(entregaResumo(p.entrega))}</td>
+          <td>
+            <form method="POST" action="/pedido/${p._id}/toggle-archive?mes=${encodeURIComponent(mesKey)}&q=${encodeURIComponent(q)}&show_archived=${showArchived ? "1" : ""}" style="margin:0;">
+              <button class="btn" type="submit">${p.arquivado ? "Desarquivar" : "Arquivar"}</button>
             </form>
           </td>
         </tr>
@@ -1062,68 +1116,101 @@ app.get("/dashboard", requireLogin, async (req, res) => {
     })
     .join("");
 
+  const blocoBaixoEstoque = `
+    <div class="card" style="margin-top:12px;">
+      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Baixo estoque</div>
+      ${
+        itensBaixo.length
+          ? itensBaixo
+              .map(
+                (i) => `
+          <div style="border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:10px;margin-bottom:8px;">
+            <a href="/estoque/${i._id}" style="font-weight:900;color:var(--gold2)">${esc(i.nome)}</a>
+            <div class="mini" style="margin-top:4px;">${esc(String(i.quantidade || 0))} ${esc(i.unidade || "un")} (mín: ${esc(String(i.minimo || 0))})</div>
+          </div>
+        `
+              )
+              .join("")
+          : `<div class="muted">Tudo ok no estoque 👌</div>`
+      }
+    </div>
+  `;
+
   const conteudo = `
-    <h2 style="color:gold;margin:0 0 8px;">Dashboard</h2>
-    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:0 0 10px;">
-      ${toggleLink}
+    <div class="row" style="justify-content:space-between;margin-bottom:10px;">
+      <h2 class="h1">Dashboard</h2>
+      <div class="row">
+        <a class="btn" href="${esc(toggleLink)}">${esc(toggleText)}</a>
+        <a class="btn" href="/relatorio?mes=${encodeURIComponent(mesKey)}">Baixar PDF (mês)</a>
+        <a class="btn" href="/export/pedidos.csv?mes=${encodeURIComponent(mesKey)}">Exportar Pedidos (CSV)</a>
+      </div>
     </div>
 
-    ${monthControlsHTML({ selectedKey: mesKey, basePath: "/dashboard", q, showPdf: true, showCsvPedidos: true, showCsvDespesas: false, extraQS: { show_archived: showArchived ? "1" : "" } })}
+    <div class="muted" style="margin-bottom:8px;">Mês: <b style="color:#fff">${esc(monthLabelPT(mesKey))}</b></div>
+
     ${busca}
 
-    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-width:920px;">
-      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
-        <div style="opacity:.75;font-size:12px;">Faturamento (Pago) — ${esc(monthLabelPT(mesKey))}</div>
-        <div style="color:gold;font-size:22px;font-weight:800;">R$ ${money(faturamentoMes)}</div>
+    <div class="grid grid-3" style="max-width:920px;">
+      <div class="card kpi">
+        <div class="label">Faturamento (Pago) — ${esc(monthLabelPT(mesKey))}</div>
+        <div class="value">R$ ${money(faturamentoMes)}</div>
       </div>
-      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
-        <div style="opacity:.75;font-size:12px;">Despesas — ${esc(monthLabelPT(mesKey))}</div>
-        <div style="color:#fff;font-size:22px;font-weight:800;">R$ ${money(totalDespesas)}</div>
+      <div class="card kpi">
+        <div class="label">Despesas — ${esc(monthLabelPT(mesKey))}</div>
+        <div class="value" style="color:#fff">R$ ${money(totalDespesas)}</div>
       </div>
-      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
-        <div style="opacity:.75;font-size:12px;">Lucro líquido — ${esc(monthLabelPT(mesKey))}</div>
-        <div style="color:gold;font-size:22px;font-weight:800;">R$ ${money(lucro)}</div>
-      </div>
-    </div>
-
-    <h3 style="color:gold;margin:18px 0 10px;">Quadro</h3>
-    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
-        <div style="color:gold;font-weight:900;margin-bottom:10px;">Pendentes</div>
-        ${rowsList(pendentes)}
-      </div>
-      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
-        <div style="color:gold;font-weight:900;margin-bottom:10px;">Pagos / Finalizados</div>
-        ${rowsList(pagos)}
+      <div class="card kpi">
+        <div class="label">Lucro líquido — ${esc(monthLabelPT(mesKey))}</div>
+        <div class="value">R$ ${money(lucro)}</div>
       </div>
     </div>
 
-    <h3 style="color:gold;margin:18px 0 10px;">Pedidos (últimos) ${q ? `— buscando: "${esc(q)}"` : ""}</h3>
-    <div style="overflow:auto;border:1px solid rgba(255,215,0,.18);border-radius:14px;">
-      <table style="width:100%;border-collapse:collapse;min-width:1380px;">
-        <thead>
-          <tr style="background:rgba(255,215,0,.08);">
-            <th style="text-align:left;padding:10px;">Pedido</th>
-            <th style="text-align:left;padding:10px;">Cliente</th>
-            <th style="text-align:left;padding:10px;">Produto</th>
-            <th style="text-align:left;padding:10px;">Valor</th>
-            <th style="text-align:left;padding:10px;">Sinal</th>
-            <th style="text-align:left;padding:10px;">Saldo</th>
-            <th style="text-align:left;padding:10px;">Status</th>
-            <th style="text-align:left;padding:10px;">Entrega</th>
-            <th style="text-align:left;padding:10px;">Arquivar</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${linhasTabela || `<tr><td style="padding:10px;" colspan="9">Nenhum pedido encontrado.</td></tr>`}
-        </tbody>
-      </table>
+    ${blocoBaixoEstoque}
+
+    <div class="spacer"></div>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Pendentes</div>
+        ${cardList(pendentes)}
+      </div>
+      <div class="card">
+        <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Pagos / Finalizados</div>
+        ${cardList(pagos)}
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="card">
+      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">
+        Pedidos (últimos) ${q ? `— buscando: "${esc(q)}"` : ""}
+      </div>
+      <div class="tablewrap">
+        <table style="min-width:1400px;">
+          <thead>
+            <tr>
+              <th>Pedido</th>
+              <th>Cliente</th>
+              <th>Produto</th>
+              <th>Valor</th>
+              <th>Sinal</th>
+              <th>Saldo</th>
+              <th>Status</th>
+              <th>Entrega</th>
+              <th>Arquivar</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${linhasTabela || `<tr><td colspan="9" class="muted" style="padding:12px;">Nenhum pedido encontrado.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
     </div>
   `;
   res.send(layout("Dashboard", conteudo));
 });
 
-// Toggle arquivar
 app.post("/pedido/:id/toggle-archive", requireLogin, async (req, res) => {
   const p = await Pedido.findById(req.params.id);
   if (p) {
@@ -1139,140 +1226,11 @@ app.post("/pedido/:id/toggle-archive", requireLogin, async (req, res) => {
   if (mes) qs.set("mes", mes);
   if (q) qs.set("q", q);
   if (showArchived) qs.set("show_archived", "1");
+
   return res.redirect(`/dashboard${qs.toString() ? "?" + qs.toString() : ""}`);
 });
 
-// ===== FINANCEIRO =====
-app.get("/financeiro", requireLogin, async (req, res) => {
-  const mesParam = String(req.query.mes || "").trim();
-  const { start: ini, end: fim, key: mesKey } = monthRangeFromKey(mesParam || monthKeyFromDate(new Date()));
-
-  const despesas = await Despesa.find({ data: { $gte: ini, $lt: fim } }).sort({ data: -1 });
-  const totalDespesas = despesas.reduce((t, d) => t + Number(d.valor || 0), 0);
-
-  const pedidosMes = await Pedido.find({ criadoEm: { $gte: ini, $lt: fim } });
-  const faturamentoMes = pedidosMes.filter((p) => p.status === "Pago").reduce((t, p) => t + Number(p.valor || 0), 0);
-  const lucro = faturamentoMes - totalDespesas;
-
-  const linhas = despesas
-    .map((d) => `
-      <tr>
-        <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(fmtDateBR(d.data))}</td>
-        <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(d.categoria || "Geral")}</td>
-        <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(d.descricao)}</td>
-        <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${money(d.valor)}</td>
-        <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
-          <form method="POST" action="/despesa/${d._id}/delete?mes=${encodeURIComponent(mesKey)}"
-            onsubmit="return confirm('Excluir esta despesa?');">
-            <button style="background:#222;color:#fff;padding:8px 10px;border:1px solid rgba(255,215,0,.25);border-radius:10px;cursor:pointer;">
-              Excluir
-            </button>
-          </form>
-        </td>
-      </tr>
-    `)
-    .join("");
-
-  const conteudo = `
-    <h2 style="color:gold;margin:0 0 8px;">Financeiro</h2>
-    ${monthControlsHTML({ selectedKey: mesKey, basePath: "/financeiro", showPdf: true, showCsvPedidos: true, showCsvDespesas: true })}
-
-    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-width:920px;">
-      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
-        <div style="opacity:.75;font-size:12px;">Faturamento (Pago) — ${esc(monthLabelPT(mesKey))}</div>
-        <div style="color:gold;font-size:22px;font-weight:800;">R$ ${money(faturamentoMes)}</div>
-      </div>
-      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
-        <div style="opacity:.75;font-size:12px;">Despesas — ${esc(monthLabelPT(mesKey))}</div>
-        <div style="color:#fff;font-size:22px;font-weight:800;">R$ ${money(totalDespesas)}</div>
-      </div>
-      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
-        <div style="opacity:.75;font-size:12px;">Lucro líquido — ${esc(monthLabelPT(mesKey))}</div>
-        <div style="color:gold;font-size:22px;font-weight:800;">R$ ${money(lucro)}</div>
-      </div>
-    </div>
-
-    <div style="margin-top:16px;border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;max-width:560px;">
-      <h3 style="margin:0 0 10px;color:gold;font-size:16px;">Adicionar despesa</h3>
-      <form method="POST" action="/financeiro/despesa?mes=${encodeURIComponent(mesKey)}">
-        <div style="margin-bottom:10px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Descrição</div>
-          <input name="descricao" required
-            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-        </div>
-        <div style="margin-bottom:10px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Categoria</div>
-          <select name="categoria"
-            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-            <option>Geral</option><option>Papel</option><option>Tinta</option><option>Material</option>
-            <option>Energia</option><option>Terceiros</option><option>Frete</option>
-          </select>
-        </div>
-        <div style="margin-bottom:10px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Valor</div>
-          <input name="valor" required
-            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-        </div>
-        <div style="margin-bottom:14px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Data</div>
-          <input name="data" placeholder="dd/mm/aaaa (opcional)"
-            style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-        </div>
-        <button style="background:gold;color:black;padding:10px 16px;border:none;border-radius:10px;font-weight:700;">Salvar despesa</button>
-      </form>
-    </div>
-
-    <h3 style="color:gold;margin:18px 0 10px;">Despesas — ${esc(monthLabelPT(mesKey))}</h3>
-    <div style="overflow:auto;border:1px solid rgba(255,215,0,.18);border-radius:14px;">
-      <table style="width:100%;border-collapse:collapse;min-width:980px;">
-        <thead>
-          <tr style="background:rgba(255,215,0,.08);">
-            <th style="text-align:left;padding:10px;">Data</th>
-            <th style="text-align:left;padding:10px;">Categoria</th>
-            <th style="text-align:left;padding:10px;">Descrição</th>
-            <th style="text-align:left;padding:10px;">Valor</th>
-            <th style="text-align:left;padding:10px;">Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${linhas || `<tr><td style="padding:10px;" colspan="5">Nenhuma despesa cadastrada neste mês.</td></tr>`}
-        </tbody>
-      </table>
-    </div>
-  `;
-  res.send(layout("Financeiro", conteudo));
-});
-
-app.post("/financeiro/despesa", requireLogin, async (req, res) => {
-  const { descricao, categoria, valor, data } = req.body;
-  const v = parseMoneyBR(valor);
-  if (!Number.isFinite(v)) return res.send(layout("Erro", `<p>Valor inválido. <a style="color:gold" href="/financeiro">Voltar</a></p>`));
-
-  let d = new Date();
-  const rawDate = String(data || "").trim();
-  if (rawDate) {
-    const parsed = parseDateBR(rawDate);
-    if (parsed) d = parsed;
-  }
-
-  await Despesa.create({
-    descricao: String(descricao || "").trim(),
-    categoria: String(categoria || "Geral").trim(),
-    valor: v,
-    data: d,
-  });
-
-  const mes = String(req.query.mes || "").trim();
-  return res.redirect(mes ? `/financeiro?mes=${encodeURIComponent(mes)}` : "/financeiro");
-});
-
-app.post("/despesa/:id/delete", requireLogin, async (req, res) => {
-  await Despesa.findByIdAndDelete(req.params.id);
-  const mes = String(req.query.mes || "").trim();
-  return res.redirect(mes ? `/financeiro?mes=${encodeURIComponent(mes)}` : "/financeiro");
-});
-
-// ===== TELA DO PEDIDO (✅ entrega + ✅ mensagens WhatsApp) =====
+// ===== TELA DO PEDIDO =====
 function checklistCheckbox(label, name, checked) {
   const chk = checked ? "checked" : "";
   return `
@@ -1285,7 +1243,7 @@ function checklistCheckbox(label, name, checked) {
 
 app.get("/pedido/:id", requireLogin, async (req, res) => {
   const pedido = await Pedido.findById(req.params.id).populate("clienteId");
-  if (!pedido) return res.send(layout("Pedido", `<p>Pedido não encontrado. <a style="color:gold" href="/dashboard">Voltar</a></p>`));
+  if (!pedido) return res.send(layout("Pedido", `<div class="card">Pedido não encontrado. <a href="/dashboard">Voltar</a></div>`));
 
   const num = String(pedido.numero || 0).padStart(4, "0");
   const clienteNome = pedido.clienteId?.nome || "Cliente";
@@ -1296,8 +1254,6 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
   const saldo = saldoPedido(pedido.valor, pedido.sinal);
 
   const e = pedido.entrega || {};
-  const entregaTxt = entregaResumo(e);
-
   const templates = buildWhatsTemplates({
     clienteNome,
     pedidoNumero: pedido.numero,
@@ -1308,71 +1264,65 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
     saldo,
     status: pedido.status,
   });
-
   const templatesJSON = JSON.stringify(templates);
 
   const conteudo = `
-    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;">
-      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;min-width:340px;flex:1;">
-        <h2 style="color:gold;margin:0 0 6px;">Pedido #${esc(num)}</h2>
-        <div style="opacity:.75;font-size:12px;margin-bottom:10px;">Criado em: ${esc(fmtDateBR(pedido.criadoEm))}</div>
+    <div class="row" style="justify-content:space-between;margin-bottom:10px;">
+      <h2 class="h1">Pedido #${esc(num)}</h2>
+      <div class="row">
+        <a class="btn" href="/dashboard">← Voltar</a>
+        ${wa ? `<a class="btn btn-gold" href="${esc(wa)}" target="_blank">WhatsApp</a>` : ""}
+        <a class="btn" href="/pedido/${pedido._id}/recibo.pdf">Baixar recibo (PDF)</a>
+      </div>
+    </div>
 
-        <div style="margin-bottom:8px;"><b>Cliente:</b> ${esc(clienteNome)}</div>
-        <div style="margin-bottom:8px;"><b>Produto:</b> ${esc(tipo + pedido.produto)}</div>
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="muted">Criado em: ${esc(fmtDateBR(pedido.criadoEm))}</div>
+        <div style="margin-top:10px;"><b>Cliente:</b> ${esc(clienteNome)}</div>
+        <div style="margin-top:6px;"><b>Produto:</b> ${esc(tipo + pedido.produto)}</div>
 
-        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px;">
+        <div class="spacer"></div>
+
+        <div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;">
           <div style="border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:10px;">
-            <div style="opacity:.7;font-size:12px;">Valor</div>
+            <div class="mini">Valor</div>
             <div style="font-weight:900;">R$ ${money(pedido.valor)}</div>
           </div>
           <div style="border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:10px;">
-            <div style="opacity:.7;font-size:12px;">Sinal</div>
+            <div class="mini">Sinal</div>
             <div style="font-weight:900;">R$ ${money(pedido.sinal || 0)}</div>
           </div>
           <div style="border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:10px;">
-            <div style="opacity:.7;font-size:12px;">Saldo</div>
+            <div class="mini">Saldo</div>
             <div style="font-weight:900;">R$ ${money(saldo)}</div>
           </div>
         </div>
 
-        <div style="margin-top:10px;border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:10px;">
-          <div style="opacity:.7;font-size:12px;">Entrega/Retirada</div>
-          <div style="font-weight:900;">${esc(entregaTxt)}</div>
+        <div class="spacer"></div>
+
+        <div style="border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:10px;">
+          <div class="mini">Entrega/Retirada</div>
+          <div style="font-weight:900;">${esc(entregaResumo(e))}</div>
         </div>
 
-        <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
-          <a href="/dashboard" style="color:gold;text-decoration:none;font-weight:900;">← Voltar</a>
-          ${wa ? `<a href="${esc(wa)}" target="_blank"
-                   style="background:gold;color:black;padding:10px 12px;border-radius:10px;text-decoration:none;font-weight:900;">
-                   WhatsApp
-                 </a>` : `<span style="opacity:.7;font-size:12px;">Sem WhatsApp no cliente</span>`}
-          <a href="/pedido/${pedido._id}/recibo.pdf"
-             style="background:#222;color:#fff;padding:10px 12px;border-radius:10px;text-decoration:none;font-weight:900;border:1px solid rgba(255,215,0,.25);">
-             Baixar recibo (PDF)
-          </a>
-        </div>
+        <div class="spacer"></div>
 
-        <!-- ✅ Mensagens prontas -->
-        <div style="margin-top:14px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px;">
-          <div style="color:gold;font-weight:900;margin-bottom:8px;">Mensagens prontas (WhatsApp)</div>
+        <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:12px;">
+          <div style="color:var(--gold2);font-weight:900;margin-bottom:8px;">Mensagens prontas (WhatsApp)</div>
 
-          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-            <select id="tplSel"
-              style="flex:1;min-width:240px;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+          <div class="row">
+            <select class="input" id="tplSel" style="flex:1;min-width:240px;">
               ${templates.map((t) => `<option value="${esc(t.key)}">${esc(t.label)}</option>`).join("")}
             </select>
 
-            <button type="button" onclick="openWA()"
-              style="background:gold;color:black;padding:10px 14px;border:none;border-radius:10px;font-weight:900;cursor:pointer;">
-              Enviar no WhatsApp
-            </button>
+            <button class="btn btn-gold" type="button" onclick="openWA()">Enviar no WhatsApp</button>
           </div>
 
-          <div style="margin-top:10px;">
-            <textarea id="tplText" rows="6"
-              style="width:100%;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;resize:vertical;"></textarea>
-            <div style="opacity:.6;font-size:12px;margin-top:6px;">Você pode editar o texto antes de enviar.</div>
-          </div>
+          <div class="spacer"></div>
+
+          <textarea class="input" id="tplText" rows="6"></textarea>
+          <div class="mini" style="margin-top:6px;">Você pode editar o texto antes de enviar.</div>
 
           <script>
             (function(){
@@ -1402,104 +1352,86 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
         </div>
       </div>
 
-      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;min-width:340px;flex:1;">
-        <h3 style="color:gold;margin:0 0 10px;">Atualizações</h3>
+      <div class="card">
+        <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Atualizações</div>
 
-        <form method="POST" action="/pedido/${pedido._id}/status?from=pedido"
-          style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
-          <select name="status"
-            style="padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-            ${statusOptions(pedido.status)}
-          </select>
-          <button style="background:gold;color:black;padding:10px 14px;border:none;border-radius:10px;font-weight:900;cursor:pointer;">
-            Salvar status
-          </button>
+        <form method="POST" action="/pedido/${pedido._id}/status" class="row" style="margin:0 0 10px;">
+          <select class="input" name="status" style="flex:1;min-width:240px;">${statusOptions(STATUS_LIST, pedido.status)}</select>
+          <button class="btn btn-gold" type="submit">Salvar status</button>
         </form>
 
         <form method="POST" action="/pedido/${pedido._id}/valores" style="border-top:1px solid rgba(255,255,255,.08);padding-top:12px;">
-          <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Editar valor/sinal</div>
-          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
-            <input name="valor" value="${esc(money(pedido.valor))}" style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-            <input name="sinal" value="${esc(money(pedido.sinal || 0))}" style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+          <div class="mini" style="margin-bottom:6px;">Editar valor/sinal</div>
+          <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
+            <input class="input" name="valor" value="${esc(money(pedido.valor))}">
+            <input class="input" name="sinal" value="${esc(money(pedido.sinal || 0))}">
           </div>
-          <button style="margin-top:10px;background:gold;color:black;padding:10px 14px;border:none;border-radius:10px;font-weight:900;cursor:pointer;">
-            Salvar valores
-          </button>
+          <div class="spacer"></div>
+          <button class="btn btn-gold" type="submit">Salvar valores</button>
         </form>
 
-        <!-- ENTREGA -->
-        <form method="POST" action="/pedido/${pedido._id}/entrega"
-          style="margin-top:12px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px;">
-          <div style="color:gold;font-weight:900;margin-bottom:8px;">Entrega / Retirada</div>
+        <form method="POST" action="/pedido/${pedido._id}/entrega" style="margin-top:12px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px;">
+          <div style="color:var(--gold2);font-weight:900;margin-bottom:8px;">Entrega / Retirada</div>
 
-          <div style="margin-bottom:10px;">
-            <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Tipo</div>
-            <select name="tipo"
-              style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
-              ${entregaOptions(e.tipo || "Retirada")}
-            </select>
-          </div>
-
-          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:10px;">
+          <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
             <div>
-              <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Data (dd/mm/aaaa)</div>
-              <input name="data" value="${esc(e.data ? fmtDateBR(e.data) : "")}" placeholder="Ex: 01/03/2026"
-                style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+              <div class="mini">Tipo</div>
+              <select class="input" name="tipo">${entregaOptions(ENTREGA_TIPOS, e.tipo || "Retirada")}</select>
             </div>
             <div>
-              <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Quem retirou</div>
-              <input name="quemRetirou" value="${esc(e.quemRetirou || "")}" placeholder="Ex: João / Cliente / Motoboy"
-                style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+              <div class="mini">Data (dd/mm/aaaa)</div>
+              <input class="input" name="data" value="${esc(e.data ? fmtDateBR(e.data) : "")}" placeholder="Ex: 01/03/2026">
             </div>
           </div>
 
-          <div style="margin-bottom:10px;">
-            <div style="opacity:.8;font-size:12px;margin-bottom:6px;">Observação</div>
-            <input name="observacao" value="${esc(e.observacao || "")}" placeholder="Ex: deixou na portaria / rastreio..."
-              style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;">
+          <div class="spacer"></div>
+
+          <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+              <div class="mini">Quem retirou</div>
+              <input class="input" name="quemRetirou" value="${esc(e.quemRetirou || "")}" placeholder="Ex: Cliente / João / Motoboy">
+            </div>
+            <div>
+              <div class="mini">Observação</div>
+              <input class="input" name="observacao" value="${esc(e.observacao || "")}" placeholder="Ex: deixou na portaria / rastreio...">
+            </div>
           </div>
 
-          <button style="background:gold;color:black;padding:10px 14px;border:none;border-radius:10px;font-weight:900;cursor:pointer;">
-            Salvar entrega
-          </button>
+          <div class="spacer"></div>
+          <button class="btn btn-gold" type="submit">Salvar entrega</button>
         </form>
 
         <form method="POST" action="/pedido/${pedido._id}/toggle-archive?from=pedido" style="margin-top:12px;">
-          <button style="background:#222;color:#fff;padding:10px 14px;border:1px solid rgba(255,215,0,.25);border-radius:10px;font-weight:900;cursor:pointer;">
-            ${pedido.arquivado ? "Desarquivar" : "Arquivar"}
-          </button>
+          <button class="btn" type="submit">${pedido.arquivado ? "Desarquivar" : "Arquivar"}</button>
         </form>
       </div>
     </div>
 
-    <div style="margin-top:12px;border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
-      <h3 style="color:gold;margin:0 0 10px;">Checklist</h3>
-      <form method="POST" action="/pedido/${pedido._id}/checklist" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
+    <div class="spacer"></div>
+
+    <div class="card">
+      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Checklist</div>
+      <form method="POST" action="/pedido/${pedido._id}/checklist" class="grid grid-2">
         ${checklistCheckbox("Arte recebida", "arteRecebida", Boolean(pedido.checklist?.arteRecebida))}
         ${checklistCheckbox("Arte aprovada", "arteAprovada", Boolean(pedido.checklist?.arteAprovada))}
         ${checklistCheckbox("Impresso", "impresso", Boolean(pedido.checklist?.impresso))}
         ${checklistCheckbox("Cortado", "cortado", Boolean(pedido.checklist?.cortado))}
         ${checklistCheckbox("Entregue", "entregue", Boolean(pedido.checklist?.entregue))}
         <div style="grid-column:1/-1;">
-          <button style="margin-top:10px;background:gold;color:black;padding:10px 14px;border:none;border-radius:10px;font-weight:900;cursor:pointer;">
-            Salvar checklist
-          </button>
+          <div class="spacer"></div>
+          <button class="btn btn-gold" type="submit">Salvar checklist</button>
         </div>
       </form>
     </div>
 
-    <div style="margin-top:12px;border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;">
-      <h3 style="color:gold;margin:0 0 10px;">Anotações</h3>
+    <div class="spacer"></div>
+
+    <div class="card">
+      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Anotações</div>
       <form method="POST" action="/pedido/${pedido._id}/anotacoes">
-        <textarea name="anotacoes" rows="6"
-          style="width:100%;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:#fff;resize:vertical;">${esc(
-            pedido.anotacoes || ""
-          )}</textarea>
-        <div style="margin-top:10px;">
-          <button style="background:gold;color:black;padding:10px 14px;border:none;border-radius:10px;font-weight:900;cursor:pointer;">
-            Salvar anotações
-          </button>
-        </div>
+        <textarea class="input" name="anotacoes" rows="6">${esc(pedido.anotacoes || "")}</textarea>
+        <div class="spacer"></div>
+        <button class="btn btn-gold" type="submit">Salvar anotações</button>
       </form>
     </div>
   `;
@@ -1510,8 +1442,8 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
 app.post("/pedido/:id/valores", requireLogin, async (req, res) => {
   const v = parseMoneyBR(req.body.valor);
   const s = parseMoneyBR(req.body.sinal);
-  if (!Number.isFinite(v) || v < 0) return res.send(layout("Erro", `<p>Valor inválido. <a style="color:gold" href="/pedido/${req.params.id}">Voltar</a></p>`));
-  if (!Number.isFinite(s) || s < 0) return res.send(layout("Erro", `<p>Sinal inválido. <a style="color:gold" href="/pedido/${req.params.id}">Voltar</a></p>`));
+  if (!Number.isFinite(v) || v < 0) return res.send(layout("Erro", `<div class="card">Valor inválido. <a href="/pedido/${req.params.id}">Voltar</a></div>`));
+  if (!Number.isFinite(s) || s < 0) return res.send(layout("Erro", `<div class="card">Sinal inválido. <a href="/pedido/${req.params.id}">Voltar</a></div>`));
 
   const sinalVal = Math.max(0, Math.min(v, s));
   await Pedido.findByIdAndUpdate(req.params.id, { valor: v, sinal: sinalVal });
@@ -1538,16 +1470,12 @@ app.post("/pedido/:id/checklist", requireLogin, async (req, res) => {
 
 app.post("/pedido/:id/status", requireLogin, async (req, res) => {
   const novoStatus = String(req.body.status || "").trim();
-  if (!STATUS_LIST.includes(novoStatus)) return res.send(layout("Erro", `<p>Status inválido. <a style="color:gold" href="/pedido/${req.params.id}">Voltar</a></p>`));
+  if (!STATUS_LIST.includes(novoStatus)) return res.send(layout("Erro", `<div class="card">Status inválido. <a href="/pedido/${req.params.id}">Voltar</a></div>`));
 
   await Pedido.findByIdAndUpdate(req.params.id, { status: novoStatus });
-
-  const from = String(req.query.from || "");
-  if (from === "pedido") return res.redirect(`/pedido/${req.params.id}`);
-  return res.redirect("/dashboard");
+  return res.redirect(`/pedido/${req.params.id}`);
 });
 
-// Salvar entrega
 app.post("/pedido/:id/entrega", requireLogin, async (req, res) => {
   const tipo = String(req.body.tipo || "Retirada").trim();
   const data = parseDateBR(req.body.data);
@@ -1566,7 +1494,6 @@ app.post("/pedido/:id/entrega", requireLogin, async (req, res) => {
   res.redirect(`/pedido/${req.params.id}`);
 });
 
-// Toggle arquivar (pedido)
 app.post("/pedido/:id/toggle-archive", requireLogin, async (req, res) => {
   const p = await Pedido.findById(req.params.id);
   if (p) {
@@ -1578,7 +1505,7 @@ app.post("/pedido/:id/toggle-archive", requireLogin, async (req, res) => {
   return res.redirect("/dashboard");
 });
 
-// ===== RECIBO PDF (inclui entrega e saldo) =====
+// ===== RECIBO PDF =====
 app.get("/pedido/:id/recibo.pdf", requireLogin, async (req, res) => {
   const pedido = await Pedido.findById(req.params.id).populate("clienteId");
   if (!pedido) return res.status(404).send("Pedido não encontrado");
@@ -1633,6 +1560,160 @@ app.get("/pedido/:id/recibo.pdf", requireLogin, async (req, res) => {
   doc.end();
 });
 
+// ===== FINANCEIRO =====
+app.get("/financeiro", requireLogin, async (req, res) => {
+  const mesParam = String(req.query.mes || "").trim();
+  const { start: ini, end: fim, key: mesKey } = monthRangeFromKey(mesParam || monthKeyFromDate(new Date()));
+
+  const despesas = await Despesa.find({ data: { $gte: ini, $lt: fim } }).sort({ data: -1 });
+  const totalDespesas = despesas.reduce((t, d) => t + Number(d.valor || 0), 0);
+
+  const pedidosMes = await Pedido.find({ criadoEm: { $gte: ini, $lt: fim } });
+  const faturamentoMes = pedidosMes.filter((p) => p.status === "Pago").reduce((t, p) => t + Number(p.valor || 0), 0);
+  const lucro = faturamentoMes - totalDespesas;
+
+  const linhas = despesas
+    .map((d) => `
+      <tr>
+        <td>${esc(fmtDateBR(d.data))}</td>
+        <td>${esc(d.categoria || "Geral")}</td>
+        <td>${esc(d.descricao)}</td>
+        <td>R$ ${money(d.valor)}</td>
+        <td>
+          <form method="POST" action="/despesa/${d._id}/delete?mes=${encodeURIComponent(mesKey)}" onsubmit="return confirm('Excluir esta despesa?');" style="margin:0;">
+            <button class="btn" type="submit">Excluir</button>
+          </form>
+        </td>
+      </tr>
+    `)
+    .join("");
+
+  const conteudo = `
+    <div class="row" style="justify-content:space-between;margin-bottom:10px;">
+      <h2 class="h1">Financeiro</h2>
+      <div class="row">
+        <a class="btn" href="/relatorio?mes=${encodeURIComponent(mesKey)}">Baixar PDF (mês)</a>
+        <a class="btn" href="/export/pedidos.csv?mes=${encodeURIComponent(mesKey)}">Exportar Pedidos (CSV)</a>
+        <a class="btn" href="/export/despesas.csv?mes=${encodeURIComponent(mesKey)}">Exportar Despesas (CSV)</a>
+      </div>
+    </div>
+
+    <div class="muted" style="margin-bottom:8px;">Mês: <b style="color:#fff">${esc(monthLabelPT(mesKey))}</b></div>
+
+    <div class="grid grid-3" style="max-width:920px;">
+      <div class="card kpi">
+        <div class="label">Faturamento (Pago)</div>
+        <div class="value">R$ ${money(faturamentoMes)}</div>
+      </div>
+      <div class="card kpi">
+        <div class="label">Despesas</div>
+        <div class="value" style="color:#fff">R$ ${money(totalDespesas)}</div>
+      </div>
+      <div class="card kpi">
+        <div class="label">Lucro líquido</div>
+        <div class="value">R$ ${money(lucro)}</div>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Adicionar despesa</div>
+        <form method="POST" action="/financeiro/despesa?mes=${encodeURIComponent(mesKey)}">
+          <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+              <div class="mini">Descrição</div>
+              <input class="input" name="descricao" required>
+            </div>
+            <div>
+              <div class="mini">Categoria</div>
+              <select class="input" name="categoria">
+                <option>Geral</option><option>Papel</option><option>Tinta</option><option>Material</option>
+                <option>Energia</option><option>Terceiros</option><option>Frete</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="spacer"></div>
+
+          <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+              <div class="mini">Valor</div>
+              <input class="input" name="valor" required>
+            </div>
+            <div>
+              <div class="mini">Data (dd/mm/aaaa opcional)</div>
+              <input class="input" name="data" placeholder="Ex: 01/03/2026">
+            </div>
+          </div>
+
+          <div class="spacer"></div>
+
+          <button class="btn btn-gold" type="submit">Salvar despesa</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Dica</div>
+        <div class="muted">O lucro líquido aqui é: faturamento (status “Pago”) - despesas do mês.</div>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="card">
+      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Despesas do mês</div>
+      <div class="tablewrap">
+        <table style="min-width:980px;">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Categoria</th>
+              <th>Descrição</th>
+              <th>Valor</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${linhas || `<tr><td colspan="5" class="muted" style="padding:12px;">Nenhuma despesa cadastrada neste mês.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  res.send(layout("Financeiro", conteudo));
+});
+
+app.post("/financeiro/despesa", requireLogin, async (req, res) => {
+  const { descricao, categoria, valor, data } = req.body;
+  const v = parseMoneyBR(valor);
+  if (!Number.isFinite(v)) return res.send(layout("Erro", `<div class="card">Valor inválido. <a href="/financeiro">Voltar</a></div>`));
+
+  let d = new Date();
+  const rawDate = String(data || "").trim();
+  if (rawDate) {
+    const parsed = parseDateBR(rawDate);
+    if (parsed) d = parsed;
+  }
+
+  await Despesa.create({
+    descricao: String(descricao || "").trim(),
+    categoria: String(categoria || "Geral").trim(),
+    valor: v,
+    data: d,
+  });
+
+  const mes = String(req.query.mes || "").trim();
+  return res.redirect(mes ? `/financeiro?mes=${encodeURIComponent(mes)}` : "/financeiro");
+});
+
+app.post("/despesa/:id/delete", requireLogin, async (req, res) => {
+  await Despesa.findByIdAndDelete(req.params.id);
+  const mes = String(req.query.mes || "").trim();
+  return res.redirect(mes ? `/financeiro?mes=${encodeURIComponent(mes)}` : "/financeiro");
+});
+
 // ===== RELATÓRIO MENSAL PDF =====
 app.get("/relatorio", requireLogin, async (req, res) => {
   const mesParam = String(req.query.mes || "").trim();
@@ -1651,7 +1732,7 @@ app.get("/relatorio", requireLogin, async (req, res) => {
   const doc = new PDFDocument({ size: "A4", margin: 40 });
   doc.pipe(res);
 
-  doc.fontSize(18).text("Atlas Creative - Relatório Mensal", { align: "left" });
+  doc.fontSize(18).text("Atlas Creative - Relatório Mensal");
   doc.moveDown(0.2);
   doc.fontSize(12).text(`Mês: ${monthLabelPT(mesKey)}`);
   doc.text(`Gerado em: ${fmtDateBR(new Date())}`);
@@ -1766,6 +1847,426 @@ app.get("/export/despesas.csv", requireLogin, async (req, res) => {
   });
 
   res.send(lines.join("\n"));
+});
+
+// ===== ESTOQUE =====
+app.get("/estoque", requireLogin, async (req, res) => {
+  const q = String(req.query.q || "").trim();
+  const filtro = q
+    ? {
+        $or: [
+          { nome: { $regex: q, $options: "i" } },
+          { categoria: { $regex: q, $options: "i" } },
+          { fornecedor: { $regex: q, $options: "i" } },
+          { local: { $regex: q, $options: "i" } },
+        ],
+      }
+    : {};
+
+  const itens = await EstoqueItem.find(filtro).sort({ atualizadoEm: -1 });
+  const baixo = itens.filter((i) => Number(i.quantidade || 0) <= Number(i.minimo || 0));
+
+  const busca = `
+    <form method="GET" action="/estoque" class="row" style="margin:0 0 12px;">
+      <input class="input" name="q" value="${esc(q)}" placeholder="Buscar item, categoria, fornecedor, local..." style="flex:1;min-width:260px;">
+      <button class="btn btn-gold" type="submit">Buscar</button>
+      ${q ? `<a class="btn" href="/estoque">Limpar</a>` : ""}
+    </form>
+  `;
+
+  const linhas = itens
+    .map((i) => {
+      const qtd = Number(i.quantidade || 0);
+      const min = Number(i.minimo || 0);
+      const estado =
+        qtd <= 0 ? `<span class="pill dangerpill">ZERADO</span>` :
+        qtd <= min ? `<span class="pill warn">BAIXO</span>` :
+        `<span class="pill">OK</span>`;
+
+      return `
+        <tr>
+          <td>
+            <a href="/estoque/${i._id}" style="font-weight:900;color:var(--gold2)">${esc(i.nome)}</a>
+            <div class="mini">${esc(i.categoria || "Geral")}</div>
+          </td>
+          <td>${estado}</td>
+          <td>${esc(String(qtd))} ${esc(i.unidade || "un")}</td>
+          <td>${esc(String(min))}</td>
+          <td>R$ ${money(i.custo || 0)}</td>
+          <td>${esc(i.fornecedor || "-")}</td>
+          <td>${esc(i.local || "-")}</td>
+          <td>
+            <form method="POST" action="/estoque/${i._id}/delete" onsubmit="return confirm('Excluir item do estoque?');" style="margin:0;">
+              <button class="btn" type="submit">Excluir</button>
+            </form>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  const conteudo = `
+    <div class="row" style="justify-content:space-between;margin-bottom:10px;">
+      <h2 class="h1">Estoque</h2>
+      ${baixo.length ? `<span class="pill dangerpill">Baixo estoque: ${baixo.length}</span>` : `<span class="pill">OK</span>`}
+    </div>
+
+    ${busca}
+
+    <div class="grid grid-2">
+      <div class="card">
+        <div style="color:var(--gold2);font-weight:900;margin-bottom:8px;">Cadastrar item</div>
+        <form method="POST" action="/estoque">
+          <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+              <div class="mini">Nome</div>
+              <input class="input" name="nome" required placeholder="Ex: Papel couchê 300g A4">
+            </div>
+            <div>
+              <div class="mini">Categoria</div>
+              <input class="input" name="categoria" placeholder="Papel / Tinta / Vinil / Embalagem...">
+            </div>
+            <div>
+              <div class="mini">Unidade</div>
+              <input class="input" name="unidade" placeholder="un / folha / metro / litro">
+            </div>
+            <div>
+              <div class="mini">Estoque mínimo</div>
+              <input class="input" name="minimo" placeholder="Ex: 10">
+            </div>
+          </div>
+
+          <div class="spacer"></div>
+
+          <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+              <div class="mini">Fornecedor</div>
+              <input class="input" name="fornecedor" placeholder="Ex: Kalunga / Mercado Livre">
+            </div>
+            <div>
+              <div class="mini">Local</div>
+              <input class="input" name="local" placeholder="Ex: Prateleira 1 / Gaveta A">
+            </div>
+          </div>
+
+          <div class="spacer"></div>
+
+          <div>
+            <div class="mini">Observação</div>
+            <input class="input" name="observacao" placeholder="Ex: usar na L4260 / válido para tags...">
+          </div>
+
+          <div class="spacer"></div>
+
+          <button class="btn btn-gold" type="submit">Salvar item</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div style="color:var(--gold2);font-weight:900;margin-bottom:8px;">Itens com baixo estoque</div>
+        ${
+          baixo.slice(0, 8).map(i => `
+            <div style="border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:10px;margin-bottom:8px;">
+              <a href="/estoque/${i._id}" style="font-weight:900;color:var(--gold2)">${esc(i.nome)}</a>
+              <div class="mini" style="margin-top:4px;">${esc(i.categoria || "Geral")} — ${esc(String(i.quantidade || 0))} ${esc(i.unidade || "un")} (mín: ${esc(String(i.minimo || 0))})</div>
+            </div>
+          `).join("") || `<div class="muted">Nenhum item em baixo estoque 👌</div>`
+        }
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="card">
+      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Lista de itens</div>
+      <div class="tablewrap">
+        <table style="min-width:1000px;">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Status</th>
+              <th>Qtd</th>
+              <th>Mín</th>
+              <th>Custo</th>
+              <th>Fornecedor</th>
+              <th>Local</th>
+              <th>Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${linhas || `<tr><td colspan="8" class="muted" style="padding:12px;">Nenhum item cadastrado.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  res.send(layout("Estoque", conteudo));
+});
+
+app.post("/estoque", requireLogin, async (req, res) => {
+  const nome = String(req.body.nome || "").trim();
+  if (!nome) return res.send(layout("Erro", `<div class="card">Nome inválido. <a href="/estoque">Voltar</a></div>`));
+
+  const minimo = Number(String(req.body.minimo || "0").replace(",", "."));
+  const unidade = String(req.body.unidade || "un").trim() || "un";
+
+  await EstoqueItem.create({
+    nome,
+    categoria: String(req.body.categoria || "Geral").trim() || "Geral",
+    unidade,
+    minimo: Number.isFinite(minimo) ? minimo : 0,
+    fornecedor: String(req.body.fornecedor || "").trim(),
+    local: String(req.body.local || "").trim(),
+    observacao: String(req.body.observacao || "").trim(),
+    atualizadoEm: new Date(),
+  });
+
+  res.redirect("/estoque");
+});
+
+app.post("/estoque/:id/delete", requireLogin, async (req, res) => {
+  await EstoqueMov.deleteMany({ itemId: req.params.id });
+  await EstoqueItem.findByIdAndDelete(req.params.id);
+  res.redirect("/estoque");
+});
+
+app.get("/estoque/:id", requireLogin, async (req, res) => {
+  const item = await EstoqueItem.findById(req.params.id);
+  if (!item) return res.send(layout("Estoque", `<div class="card">Item não encontrado. <a href="/estoque">Voltar</a></div>`));
+
+  const movs = await EstoqueMov.find({ itemId: item._id }).sort({ criadoEm: -1 }).limit(50);
+
+  const qtd = Number(item.quantidade || 0);
+  const min = Number(item.minimo || 0);
+  const estado =
+    qtd <= 0 ? `<span class="pill dangerpill">ZERADO</span>` :
+    qtd <= min ? `<span class="pill warn">BAIXO</span>` :
+    `<span class="pill">OK</span>`;
+
+  const linhasMov = movs.map(m => `
+    <tr>
+      <td>${esc(fmtDateBR(m.criadoEm))}</td>
+      <td>${esc(m.tipo)}</td>
+      <td>${esc(String(m.quantidade))}</td>
+      <td>${esc(m.motivo || "-")}</td>
+      <td>${m.pedidoNumero ? `#${esc(String(m.pedidoNumero).padStart(4,"0"))}` : "-"}</td>
+      <td>${m.custoUnitario != null ? `R$ ${money(m.custoUnitario)}` : "-"}</td>
+    </tr>
+  `).join("");
+
+  const conteudo = `
+    <div class="row" style="justify-content:space-between;margin-bottom:10px;">
+      <div>
+        <h2 class="h1">${esc(item.nome)}</h2>
+        <div class="muted">${esc(item.categoria || "Geral")} • ${estado}</div>
+      </div>
+      <div class="row">
+        <a class="btn" href="/estoque">← Voltar</a>
+      </div>
+    </div>
+
+    <div class="grid grid-3">
+      <div class="card kpi">
+        <div class="label">Quantidade</div>
+        <div class="value">${esc(String(qtd))} ${esc(item.unidade || "un")}</div>
+        <div class="muted">Mínimo: ${esc(String(min))}</div>
+      </div>
+      <div class="card kpi">
+        <div class="label">Custo (referência)</div>
+        <div class="value">R$ ${money(item.custo || 0)}</div>
+        <div class="muted">Fornecedor: ${esc(item.fornecedor || "-")}</div>
+      </div>
+      <div class="card kpi">
+        <div class="label">Local</div>
+        <div class="value">${esc(item.local || "-")}</div>
+        <div class="muted">Atualizado: ${esc(fmtDateBR(item.atualizadoEm))}</div>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <div style="color:var(--gold2);font-weight:900;margin-bottom:8px;">Movimentar estoque</div>
+        <form method="POST" action="/estoque/${item._id}/mov">
+          <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+              <div class="mini">Tipo</div>
+              <select class="input" name="tipo">
+                <option>Entrada</option>
+                <option>Saída</option>
+                <option>Ajuste</option>
+              </select>
+            </div>
+            <div>
+              <div class="mini">Quantidade</div>
+              <input class="input" name="quantidade" required placeholder="Ex: 10">
+            </div>
+          </div>
+
+          <div class="spacer"></div>
+
+          <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+              <div class="mini">Motivo (opcional)</div>
+              <input class="input" name="motivo" placeholder="Ex: compra / uso em pedido / ajuste inventário">
+            </div>
+            <div>
+              <div class="mini">Custo unit. (entrada, opcional)</div>
+              <input class="input" name="custoUnitario" placeholder="Ex: 2,50">
+            </div>
+          </div>
+
+          <div class="spacer"></div>
+
+          <div>
+            <div class="mini">Vincular ao pedido (nº opcional)</div>
+            <input class="input" name="pedidoNumero" placeholder="Ex: 12">
+          </div>
+
+          <div class="spacer"></div>
+
+          <button class="btn btn-gold" type="submit">Salvar movimentação</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div style="color:var(--gold2);font-weight:900;margin-bottom:8px;">Editar dados do item</div>
+        <form method="POST" action="/estoque/${item._id}/edit">
+          <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+              <div class="mini">Categoria</div>
+              <input class="input" name="categoria" value="${esc(item.categoria || "Geral")}">
+            </div>
+            <div>
+              <div class="mini">Unidade</div>
+              <input class="input" name="unidade" value="${esc(item.unidade || "un")}">
+            </div>
+            <div>
+              <div class="mini">Mínimo</div>
+              <input class="input" name="minimo" value="${esc(String(item.minimo || 0))}">
+            </div>
+            <div>
+              <div class="mini">Custo</div>
+              <input class="input" name="custo" value="${esc(money(item.custo || 0))}">
+            </div>
+          </div>
+
+          <div class="spacer"></div>
+
+          <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+              <div class="mini">Fornecedor</div>
+              <input class="input" name="fornecedor" value="${esc(item.fornecedor || "")}">
+            </div>
+            <div>
+              <div class="mini">Local</div>
+              <input class="input" name="local" value="${esc(item.local || "")}">
+            </div>
+          </div>
+
+          <div class="spacer"></div>
+
+          <div>
+            <div class="mini">Observação</div>
+            <input class="input" name="observacao" value="${esc(item.observacao || "")}">
+          </div>
+
+          <div class="spacer"></div>
+
+          <button class="btn btn-gold" type="submit">Salvar dados</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="card">
+      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Histórico (últimas 50)</div>
+      <div class="tablewrap">
+        <table style="min-width:900px;">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Tipo</th>
+              <th>Qtd</th>
+              <th>Motivo</th>
+              <th>Pedido</th>
+              <th>Custo unit.</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${linhasMov || `<tr><td colspan="6" class="muted" style="padding:12px;">Sem movimentações ainda.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  res.send(layout("Item do estoque", conteudo));
+});
+
+app.post("/estoque/:id/edit", requireLogin, async (req, res) => {
+  const minimo = Number(String(req.body.minimo || "0").replace(",", "."));
+  const custo = parseMoneyBR(req.body.custo);
+
+  await EstoqueItem.findByIdAndUpdate(req.params.id, {
+    categoria: String(req.body.categoria || "Geral").trim() || "Geral",
+    unidade: String(req.body.unidade || "un").trim() || "un",
+    minimo: Number.isFinite(minimo) ? minimo : 0,
+    custo: Number.isFinite(custo) ? custo : 0,
+    fornecedor: String(req.body.fornecedor || "").trim(),
+    local: String(req.body.local || "").trim(),
+    observacao: String(req.body.observacao || "").trim(),
+    atualizadoEm: new Date(),
+  });
+
+  res.redirect(`/estoque/${req.params.id}`);
+});
+
+app.post("/estoque/:id/mov", requireLogin, async (req, res) => {
+  const item = await EstoqueItem.findById(req.params.id);
+  if (!item) return res.redirect("/estoque");
+
+  const tipo = String(req.body.tipo || "Entrada").trim();
+  const qtd = Number(String(req.body.quantidade || "0").replace(",", "."));
+  if (!Number.isFinite(qtd) || qtd <= 0) {
+    return res.send(layout("Erro", `<div class="card">Quantidade inválida. <a href="/estoque/${item._id}">Voltar</a></div>`));
+  }
+
+  const motivo = String(req.body.motivo || "").trim();
+  const pedidoNumeroRaw = String(req.body.pedidoNumero || "").trim();
+  const pedidoNumero = pedidoNumeroRaw ? Number(pedidoNumeroRaw) : null;
+
+  const custoUnitario = String(req.body.custoUnitario || "").trim()
+    ? parseMoneyBR(req.body.custoUnitario)
+    : null;
+
+  let novaQtd = Number(item.quantidade || 0);
+
+  if (tipo === "Entrada") {
+    novaQtd += qtd;
+    if (custoUnitario != null && Number.isFinite(custoUnitario)) item.custo = custoUnitario;
+  } else if (tipo === "Saída") {
+    novaQtd -= qtd;
+    if (novaQtd < 0) novaQtd = 0;
+  } else {
+    novaQtd = qtd; // Ajuste = setar
+  }
+
+  await EstoqueMov.create({
+    itemId: item._id,
+    tipo,
+    quantidade: qtd,
+    motivo,
+    pedidoNumero: Number.isFinite(pedidoNumero) ? pedidoNumero : null,
+    custoUnitario: (custoUnitario != null && Number.isFinite(custoUnitario)) ? custoUnitario : null,
+  });
+
+  item.quantidade = novaQtd;
+  item.atualizadoEm = new Date();
+  await item.save();
+
+  res.redirect(`/estoque/${item._id}`);
 });
 
 // ===== START =====
