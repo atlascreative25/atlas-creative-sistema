@@ -57,7 +57,7 @@ const PedidoSchema = new mongoose.Schema(
 );
 const Pedido = mongoose.model("Pedido", PedidoSchema);
 
-// ===== FUNÇÕES =====
+// ===== HELPERS =====
 async function getNextNumero() {
   const counter = await Counter.findOneAndUpdate(
     { _id: "pedido" },
@@ -142,7 +142,7 @@ app.get("/logout", (req, res) => {
   req.session.destroy(() => res.redirect("/"));
 });
 
-// ===== CLIENTES =====
+// ===== CLIENTES (LISTA + CADASTRO) =====
 app.get("/clientes", requireLogin, async (req, res) => {
   const clientes = await Cliente.find().sort({ criadoEm: -1 });
 
@@ -150,7 +150,11 @@ app.get("/clientes", requireLogin, async (req, res) => {
     .map((c) => {
       return `
         <tr>
-          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(c.nome)}</td>
+          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">
+            <a href="/clientes/${c._id}" style="color:gold;text-decoration:none;">
+              ${esc(c.nome)}
+            </a>
+          </td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(c.whatsapp)}</td>
           <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(c.observacoes)}</td>
         </tr>
@@ -219,6 +223,71 @@ app.post("/clientes", requireLogin, async (req, res) => {
   });
 
   res.redirect("/clientes");
+});
+
+// ===== CLIENTE DETALHE (HISTÓRICO) =====
+app.get("/clientes/:id", requireLogin, async (req, res) => {
+  const cliente = await Cliente.findById(req.params.id);
+  if (!cliente) {
+    return res.send(layout("Cliente", `<p>Cliente não encontrado. <a style="color:gold" href="/clientes">Voltar</a></p>`));
+  }
+
+  const pedidos = await Pedido.find({ clienteId: cliente._id }).sort({ criadoEm: -1 });
+
+  const totalGasto = pedidos
+    .filter((p) => p.status !== "Cancelado")
+    .reduce((t, p) => t + Number(p.valor || 0), 0);
+
+  const linhas = pedidos
+    .map((p) => {
+      const num = String(p.numero).padStart(4, "0");
+      return `
+        <tr>
+          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">#${esc(num)}</td>
+          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(p.produto)}</td>
+          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">R$ ${Number(p.valor).toFixed(2)}</td>
+          <td style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">${esc(p.status)}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  const conteudo = `
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;">
+      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;min-width:280px;">
+        <h2 style="color:gold;margin:0 0 8px;">${esc(cliente.nome)}</h2>
+        <div style="opacity:.85;margin-bottom:6px;">WhatsApp: ${esc(cliente.whatsapp || "-")}</div>
+        <div style="opacity:.75;">Obs: ${esc(cliente.observacoes || "-")}</div>
+        <div style="margin-top:12px;">
+          <a href="/clientes" style="color:gold;text-decoration:none;font-weight:700;">← Voltar</a>
+        </div>
+      </div>
+
+      <div style="border:1px solid rgba(255,215,0,.18);border-radius:14px;padding:14px;min-width:280px;">
+        <div style="opacity:.75;font-size:12px;">Total gasto (exceto cancelados)</div>
+        <div style="color:gold;font-size:22px;font-weight:800;">R$ ${totalGasto.toFixed(2)}</div>
+      </div>
+    </div>
+
+    <h3 style="color:gold;margin:18px 0 10px;">Pedidos do cliente</h3>
+    <div style="overflow:auto;border:1px solid rgba(255,215,0,.18);border-radius:14px;">
+      <table style="width:100%;border-collapse:collapse;min-width:760px;">
+        <thead>
+          <tr style="background:rgba(255,215,0,.08);">
+            <th style="text-align:left;padding:10px;">Pedido</th>
+            <th style="text-align:left;padding:10px;">Produto</th>
+            <th style="text-align:left;padding:10px;">Valor</th>
+            <th style="text-align:left;padding:10px;">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${linhas || `<tr><td style="padding:10px;" colspan="4">Nenhum pedido para este cliente ainda.</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  res.send(layout("Cliente", conteudo));
 });
 
 // ===== DASHBOARD =====
