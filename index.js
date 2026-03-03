@@ -285,7 +285,7 @@ function layout(titulo, conteudo) {
 
         <!-- ✅ Logo pequena no topo -->
         <div class="brand" style="display:flex;align-items:center;gap:12px;">
-          <img src="/logo.png" alt="Atlas Creative" style="height:38px;width:auto;border-radius:10px;">
+         <img src="/icon-192.png" alt="Atlas Creative" style="height:38px;width:38px;border-radius:12px;border:1px solid rgba(215,178,90,.22);padding:4px;background:#0b0b0c;">
           <div style="display:flex;flex-direction:column;gap:2px;">
             <div class="title">Atlas Creative</div>
             <div class="sub">Sistema de Gestão</div>
@@ -543,10 +543,14 @@ app.get("/", (req, res) => {
         text-align:center;
       }
       .logo{
-        height:70px;
-        width:auto;
-        border-radius:14px;
-        margin-bottom:10px;
+  height:88px;
+  width:88px;
+  border-radius:18px;
+  margin-bottom:10px;
+  border:1px solid rgba(215,178,90,.22);
+  background:#0b0b0c;
+  padding:10px;
+}
       }
       .title{
         color:#f5d36a;
@@ -579,7 +583,7 @@ app.get("/", (req, res) => {
   </head>
   <body>
     <div class="login-card">
-      <img class="logo" src="/logo.png" alt="Atlas Creative">
+      <img class="logo" src="/icon-192.png" alt="Atlas Creative">
       <h1 class="title">Atlas Creative</h1>
       <p class="sub">Acesse o sistema com seu login</p>
 
