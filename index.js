@@ -247,10 +247,11 @@ function layout(titulo, conteudo) {
         </div>
       </header>
 
-      <section class="content">
-        ${conteudo}
-      </section>
-    </main>
+     <section class="content">
+  <div class="page">
+    ${conteudo}
+  </div>
+</section>
 
     <script>
       if ('serviceWorker' in navigator) {
