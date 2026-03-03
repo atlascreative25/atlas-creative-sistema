@@ -8,7 +8,7 @@ const path = require("path");
 const app = express();
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// === PWA: servir arquivos estáticos /public ===
+// Servir /public (PWA + logo + css)
 app.use(express.static(path.join(__dirname, "public")));
 
 app.use(
@@ -187,15 +187,7 @@ function buildWhatsTemplates({ clienteNome, pedidoNumero, produtoDesc, tipoProdu
   ];
 }
 
-function csvEscape(v) {
-  const s = String(v ?? "");
-  if (s.includes('"') || s.includes(",") || s.includes("\n")) {
-    return `"${s.replaceAll('"', '""')}"`;
-  }
-  return s;
-}
-
-// ===== LAYOUT (luxo premium + PWA links + app.css + SW register) =====
+// ===== LAYOUT (luxo + logo no topo + PWA + app.css + SW) =====
 function layout(titulo, conteudo) {
   return `
   <html>
@@ -209,21 +201,19 @@ function layout(titulo, conteudo) {
     <meta name="theme-color" content="#d7b25a">
     <link rel="apple-touch-icon" href="/icon-192.png">
 
-    <!-- Premium theme -->
+    <!-- Tema premium -->
     <link rel="stylesheet" href="/app.css">
 
     <style>
-      /* base styles (resto fica no app.css) */
       .topbar{
         position:sticky;top:0;z-index:9;
         background:rgba(7,7,7,.85);backdrop-filter: blur(10px);
-        border-bottom:1px solid rgba(255,255,255,.12);
+        border-bottom:1px solid rgba(215,178,90,.18);
       }
       .topbar-inner{
         max-width:1200px;margin:auto;padding:14px 18px;
         display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
       }
-      .brand{display:flex;flex-direction:column;gap:2px}
       .brand .title{color:#f5d36a;font-weight:900;font-size:20px;letter-spacing:.3px}
       .brand .sub{font-size:12px;color:rgba(255,255,255,.72)}
       .nav{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -292,10 +282,16 @@ function layout(titulo, conteudo) {
   <body>
     <div class="topbar">
       <div class="topbar-inner">
-        <div class="brand">
-          <div class="title">Atlas Creative</div>
-          <div class="sub">Sistema de Gestão</div>
+
+        <!-- ✅ Logo pequena no topo -->
+        <div class="brand" style="display:flex;align-items:center;gap:12px;">
+          <img src="/logo.png" alt="Atlas Creative" style="height:38px;width:auto;border-radius:10px;">
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <div class="title">Atlas Creative</div>
+            <div class="sub">Sistema de Gestão</div>
+          </div>
         </div>
+
         <div class="nav">
           <a href="/dashboard">Dashboard</a>
           <a href="/clientes">Clientes</a>
@@ -307,11 +303,12 @@ function layout(titulo, conteudo) {
         </div>
       </div>
     </div>
+
     <div class="container">
       ${conteudo}
     </div>
 
-    <!-- PWA: registrar service worker -->
+    <!-- PWA: registrar SW -->
     <script>
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js');
@@ -397,7 +394,7 @@ const EntregaSchema = new mongoose.Schema(
   { _id: false }
 );
 
-// ===== ESTOQUE (itens + movimentações) =====
+// ===== ESTOQUE =====
 const EstoqueItemSchema = new mongoose.Schema(
   {
     nome: { type: String, required: true },
@@ -430,7 +427,6 @@ const EstoqueMovSchema = new mongoose.Schema(
 );
 const EstoqueMov = mongoose.model("EstoqueMov", EstoqueMovSchema);
 
-// ===== PEDIDO: materiais + baixa automática 1x =====
 const PedidoMaterialSchema = new mongoose.Schema(
   {
     itemId: { type: mongoose.Schema.Types.ObjectId, ref: "EstoqueItem", required: true },
@@ -512,18 +508,97 @@ async function baixarEstoqueDoPedidoSePreciso(pedido, novoStatus) {
   await pedido.save();
 }
 
-// ===== AUTH =====
+// ===== LOGIN (com logo + fundo escuro premium) =====
 app.get("/", (req, res) => {
   if (req.session.logado) return res.redirect("/dashboard");
+
   res.send(`
-  <body style="background:black;color:white;text-align:center;padding-top:100px;font-family:Arial">
-    <h1 style="color:#f5d36a">Atlas Creative</h1>
-    <form method="POST" action="/login">
-      <input name="email" placeholder="Email" required style="padding:10px;border-radius:10px;border:1px solid #333;background:#0b0b0b;color:#fff"><br><br>
-      <input name="senha" type="password" placeholder="Senha" required style="padding:10px;border-radius:10px;border:1px solid #333;background:#0b0b0b;color:#fff"><br><br>
-      <button style="background:#f5d36a;color:black;padding:10px 20px;border:none;border-radius:10px;font-weight:800;cursor:pointer">Entrar</button>
-    </form>
+  <html>
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>Login • Atlas Creative</title>
+    <link rel="stylesheet" href="/app.css">
+    <meta name="theme-color" content="#d7b25a">
+    <style>
+      body{
+        margin:0;
+        min-height:100vh;
+        display:grid;
+        place-items:center;
+        font-family:Arial,system-ui;
+        color:#fff;
+        background:
+          radial-gradient(900px 520px at 12% -8%, rgba(215,178,90,.16), transparent 60%),
+          radial-gradient(780px 520px at 92% 0%, rgba(245,211,106,.12), transparent 55%),
+          #070707;
+      }
+      .login-card{
+        width:min(420px, 92vw);
+        padding:18px;
+        border-radius:18px;
+        border:1px solid rgba(215,178,90,.20);
+        background:linear-gradient(180deg,#0f0f10,#121214);
+        box-shadow: 0 18px 60px rgba(0,0,0,.55);
+        text-align:center;
+      }
+      .logo{
+        height:70px;
+        width:auto;
+        border-radius:14px;
+        margin-bottom:10px;
+      }
+      .title{
+        color:#f5d36a;
+        font-weight:900;
+        font-size:22px;
+        margin:0 0 4px;
+      }
+      .sub{color:rgba(255,255,255,.72);margin:0 0 14px;font-size:12px;}
+      .row{display:grid;gap:10px;text-align:left}
+      .btn-gold{
+        width:100%;
+        padding:10px 12px;
+        border-radius:12px;
+        background:linear-gradient(180deg,#f5d36a,#d7b25a);
+        color:#000;
+        font-weight:900;
+        border:0;
+        cursor:pointer;
+      }
+      .input{
+        width:100%;
+        padding:10px;
+        border-radius:12px;
+        border:1px solid rgba(255,255,255,.12);
+        background:#0b0b0c;
+        color:#fff;
+        outline:none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="login-card">
+      <img class="logo" src="/logo.png" alt="Atlas Creative">
+      <h1 class="title">Atlas Creative</h1>
+      <p class="sub">Acesse o sistema com seu login</p>
+
+      <form method="POST" action="/login" class="row">
+        <div>
+          <div style="font-size:12px;color:rgba(255,255,255,.72);margin-bottom:6px;">Email</div>
+          <input class="input" name="email" placeholder="Email" required>
+        </div>
+
+        <div>
+          <div style="font-size:12px;color:rgba(255,255,255,.72);margin-bottom:6px;">Senha</div>
+          <input class="input" name="senha" type="password" placeholder="Senha" required>
+        </div>
+
+        <button class="btn-gold" type="submit">Entrar</button>
+      </form>
+    </div>
   </body>
+  </html>
   `);
 });
 
@@ -1046,17 +1121,7 @@ app.post("/pedido/:id/toggle-archive", requireLogin, async (req, res) => {
   return res.redirect(`/dashboard${qs.toString() ? "?" + qs.toString() : ""}`);
 });
 
-// ===== PEDIDO (tela + materiais + whatsapp + entrega + status baixa estoque) =====
-function checklistCheckbox(label, name, checked) {
-  const chk = checked ? "checked" : "";
-  return `
-    <label style="display:flex;gap:10px;align-items:center;padding:10px;border:1px solid rgba(255,255,255,.10);border-radius:12px;">
-      <input type="checkbox" name="${esc(name)}" ${chk} style="transform:scale(1.2);">
-      <span>${esc(label)}</span>
-    </label>
-  `;
-}
-
+// ===== PEDIDO (tela + whatsapp + materiais + entrega + baixa estoque) =====
 app.get("/pedido/:id", requireLogin, async (req, res) => {
   const pedido = await Pedido.findById(req.params.id).populate("clienteId");
   if (!pedido) return res.send(layout("Pedido", `<div class="card">Pedido não encontrado. <a href="/dashboard">Voltar</a></div>`));
@@ -1068,7 +1133,6 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
   const whatsapp = pedido.clienteId?.whatsapp || "";
   const wa = waLinkBR(whatsapp);
 
-  const tipo = pedido.tipoProduto ? `${pedido.tipoProduto} — ` : "";
   const saldo = saldoPedido(pedido.valor, pedido.sinal);
 
   const e = pedido.entrega || {};
@@ -1116,7 +1180,7 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
       <div class="card">
         <div class="muted">Criado em: ${esc(fmtDateBR(pedido.criadoEm))}</div>
         <div style="margin-top:10px;"><b>Cliente:</b> ${esc(clienteNome)}</div>
-        <div style="margin-top:6px;"><b>Produto:</b> ${esc(tipo + pedido.produto)}</div>
+        <div style="margin-top:6px;"><b>Produto:</b> ${esc((pedido.tipoProduto ? pedido.tipoProduto + " — " : "") + pedido.produto)}</div>
 
         <div class="spacer"></div>
 
@@ -1264,34 +1328,6 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
         Dica: adicione os materiais antes de colocar o status em <b>Em produção</b> ou <b>Entregue</b>.
       </div>
     </div>
-
-    <div class="spacer"></div>
-
-    <div class="card">
-      <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Checklist</div>
-      <form method="POST" action="/pedido/${pedido._id}/checklist" class="grid grid-2">
-        ${checklistCheckbox("Arte recebida", "arteRecebida", Boolean(pedido.checklist?.arteRecebida))}
-        ${checklistCheckbox("Arte aprovada", "arteAprovada", Boolean(pedido.checklist?.arteAprovada))}
-        ${checklistCheckbox("Impresso", "impresso", Boolean(pedido.checklist?.impresso))}
-        ${checklistCheckbox("Cortado", "cortado", Boolean(pedido.checklist?.cortado))}
-        ${checklistCheckbox("Entregue", "entregue", Boolean(pedido.checklist?.entregue))}
-        <div style="grid-column:1/-1;">
-          <div class="spacer"></div>
-          <button class="btn btn-gold" type="submit">Salvar checklist</button>
-        </div>
-      </form>
-    </div>
-
-    <div class="spacer"></div>
-
-    <div class="card">
-      <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Anotações</div>
-      <form method="POST" action="/pedido/${pedido._id}/anotacoes">
-        <textarea class="input" name="anotacoes" rows="6">${esc(pedido.anotacoes || "")}</textarea>
-        <div class="spacer"></div>
-        <button class="btn btn-gold" type="submit">Salvar anotações</button>
-      </form>
-    </div>
   `;
   res.send(layout(`Pedido #${num}`, conteudo));
 });
@@ -1333,24 +1369,6 @@ app.post("/pedido/:id/valores", requireLogin, async (req, res) => {
   if (!Number.isFinite(s) || s < 0) return res.send(layout("Erro", `<div class="card">Sinal inválido. <a href="/pedido/${req.params.id}">Voltar</a></div>`));
   const sinalVal = Math.max(0, Math.min(v, s));
   await Pedido.findByIdAndUpdate(req.params.id, { valor: v, sinal: sinalVal });
-  res.redirect(`/pedido/${req.params.id}`);
-});
-
-app.post("/pedido/:id/anotacoes", requireLogin, async (req, res) => {
-  const anotacoes = String(req.body.anotacoes || "");
-  await Pedido.findByIdAndUpdate(req.params.id, { anotacoes });
-  res.redirect(`/pedido/${req.params.id}`);
-});
-
-app.post("/pedido/:id/checklist", requireLogin, async (req, res) => {
-  const nextChecklist = {
-    arteRecebida: !!req.body.arteRecebida,
-    arteAprovada: !!req.body.arteAprovada,
-    impresso: !!req.body.impresso,
-    cortado: !!req.body.cortado,
-    entregue: !!req.body.entregue,
-  };
-  await Pedido.findByIdAndUpdate(req.params.id, { checklist: nextChecklist });
   res.redirect(`/pedido/${req.params.id}`);
 });
 
@@ -1432,21 +1450,10 @@ app.get("/pedido/:id/recibo.pdf", requireLogin, async (req, res) => {
   doc.text(`Status: ${pedido.status}`);
   doc.text(`Entrega: ${entregaResumo(e)}`);
   doc.text(`Estoque baixado: ${pedido.estoqueBaixado ? "Sim" : "Não"}`);
-  doc.moveDown();
-
-  if (pedido.materiais?.length) {
-    doc.fontSize(12).text("Materiais usados:", { underline: true });
-    doc.moveDown(0.3);
-    pedido.materiais.forEach((m) => {
-      doc.fontSize(11).text(`- ${m.nome}: ${m.quantidade} ${m.unidade || "un"}`);
-    });
-    doc.moveDown();
-  }
-
   doc.end();
 });
 
-// ===== FINANCEIRO =====
+// ===== FINANCEIRO (página + CRUD despesas) =====
 app.get("/financeiro", requireLogin, async (req, res) => {
   const mesParam = String(req.query.mes || "").trim();
   const { start: ini, end: fim, key: mesKey } = monthRangeFromKey(mesParam || monthKeyFromDate(new Date()));
@@ -1475,9 +1482,7 @@ app.get("/financeiro", requireLogin, async (req, res) => {
     .join("");
 
   const conteudo = `
-    <div class="row" style="justify-content:space-between;margin-bottom:10px;">
-      <h2 class="h1">Financeiro</h2>
-    </div>
+    <h2 class="h1">Financeiro</h2>
 
     <div class="muted" style="margin-bottom:8px;">Mês: <b style="color:#fff">${esc(monthLabelPT(mesKey))}</b></div>
 
@@ -1566,7 +1571,7 @@ app.post("/despesa/:id/delete", requireLogin, async (req, res) => {
   return res.redirect(mes ? `/financeiro?mes=${encodeURIComponent(mes)}` : "/financeiro");
 });
 
-// ===== ESTOQUE =====
+// ===== ESTOQUE (lista + cadastro + delete) =====
 app.get("/estoque", requireLogin, async (req, res) => {
   const q = String(req.query.q || "").trim();
   const filtro = q
@@ -1602,13 +1607,12 @@ app.get("/estoque", requireLogin, async (req, res) => {
     return `
       <tr>
         <td>
-          <a href="/estoque/${i._id}" style="font-weight:900;color:#f5d36a;text-decoration:none;">${esc(i.nome)}</a>
+          <div style="font-weight:900;color:#f5d36a">${esc(i.nome)}</div>
           <div class="mini">${esc(i.categoria || "Geral")}</div>
         </td>
         <td>${estado}</td>
         <td>${esc(String(qtd))} ${esc(i.unidade || "un")}</td>
         <td>${esc(String(min))}</td>
-        <td>R$ ${money(i.custo || 0)}</td>
         <td>${esc(i.fornecedor || "-")}</td>
         <td>${esc(i.local || "-")}</td>
         <td>
@@ -1648,7 +1652,7 @@ app.get("/estoque", requireLogin, async (req, res) => {
 
           <div class="spacer"></div>
 
-          <div><div class="mini">Observação</div><input class="input" name="observacao" placeholder="Ex: usar na L4260 / válido para tags..."></div>
+          <div><div class="mini">Observação</div><input class="input" name="observacao"></div>
 
           <div class="spacer"></div>
           <button class="btn btn-gold" type="submit">Salvar item</button>
@@ -1660,7 +1664,7 @@ app.get("/estoque", requireLogin, async (req, res) => {
         ${
           baixo.slice(0, 8).map(i => `
             <div style="border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:10px;margin-bottom:8px;">
-              <a href="/estoque/${i._id}" style="font-weight:900;color:#f5d36a;text-decoration:none;">${esc(i.nome)}</a>
+              <div style="font-weight:900;color:#f5d36a">${esc(i.nome)}</div>
               <div class="mini" style="margin-top:4px;">${esc(i.categoria || "Geral")} — ${esc(String(i.quantidade || 0))} ${esc(i.unidade || "un")} (mín: ${esc(String(i.minimo || 0))})</div>
             </div>
           `).join("") || `<div class="muted">Nenhum item em baixo estoque 👌</div>`
@@ -1673,11 +1677,11 @@ app.get("/estoque", requireLogin, async (req, res) => {
     <div class="card">
       <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Lista de itens</div>
       <div class="tablewrap">
-        <table style="min-width:1000px;">
+        <table style="min-width:980px;">
           <thead>
-            <tr><th>Item</th><th>Status</th><th>Qtd</th><th>Mín</th><th>Custo</th><th>Fornecedor</th><th>Local</th><th>Ação</th></tr>
+            <tr><th>Item</th><th>Status</th><th>Qtd</th><th>Mín</th><th>Fornecedor</th><th>Local</th><th>Ação</th></tr>
           </thead>
-          <tbody>${linhas || `<tr><td colspan="8" class="muted" style="padding:12px;">Nenhum item cadastrado.</td></tr>`}</tbody>
+          <tbody>${linhas || `<tr><td colspan="7" class="muted" style="padding:12px;">Nenhum item cadastrado.</td></tr>`}</tbody>
         </table>
       </div>
     </div>
@@ -1714,4 +1718,4 @@ app.post("/estoque/:id/delete", requireLogin, async (req, res) => {
 
 // ===== START =====
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Servidor rodando"));
+app.listen(PORT, () => console.log("Servidor rodando na porta", PORT));
