@@ -280,3 +280,10 @@ table{
 [style*="width:"]{
   max-width: 100% !important;
 }
+.erp{
+  grid-template-columns: 290px 1fr !important;
+}
+
+.sidebar{
+  width: 290px !important;
+}
