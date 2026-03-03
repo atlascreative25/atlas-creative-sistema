@@ -196,119 +196,62 @@ function layout(titulo, conteudo) {
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <title>${esc(titulo)}</title>
 
-    <!-- PWA -->
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#d7b25a">
     <link rel="apple-touch-icon" href="/icon-192.png">
 
-    <!-- Tema premium -->
     <link rel="stylesheet" href="/app.css">
 
-    <style>
-      .topbar{
-        position:sticky;top:0;z-index:9;
-        background:rgba(7,7,7,.85);backdrop-filter: blur(10px);
-        border-bottom:1px solid rgba(215,178,90,.18);
+    <script>
+      function toggleSidebar(){
+        document.body.classList.toggle('sb-open');
       }
-      .topbar-inner{
-        max-width:1200px;margin:auto;padding:14px 18px;
-        display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
-      }
-      .brand .title{color:#f5d36a;font-weight:900;font-size:20px;letter-spacing:.3px}
-      .brand .sub{font-size:12px;color:rgba(255,255,255,.72)}
-      .nav{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-      .nav a{
-        padding:8px 10px;border-radius:12px;
-        border:1px solid transparent;
-        color:#f5d36a;font-weight:800;font-size:13px;
-        text-decoration:none;
-      }
-      .nav a:hover{border-color:rgba(215,178,90,.35);background:rgba(215,178,90,.08)}
-      .nav .danger{color:rgba(255,255,255,.85)}
-      .container{max-width:1200px;margin:auto;padding:18px}
-      .h1{margin:0 0 10px;color:#f5d36a;font-size:22px}
-      .card{
-        background:linear-gradient(180deg,#0f0f10,#121214);
-        border:1px solid rgba(215,178,90,.18);
-        border-radius:18px;
-        padding:14px;
-      }
-      .grid{display:grid;gap:12px}
-      .grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
-      .grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
-      @media(max-width:900px){.grid-2,.grid-3{grid-template-columns:1fr}}
-      .muted{color:rgba(255,255,255,.72)}
-      .kpi{display:flex;flex-direction:column;gap:6px}
-      .kpi .label{font-size:12px;color:rgba(255,255,255,.72)}
-      .kpi .value{font-size:22px;font-weight:900;color:#f5d36a}
-      .btn{
-        display:inline-flex;align-items:center;justify-content:center;gap:8px;
-        padding:10px 12px;border-radius:12px;
-        border:1px solid rgba(215,178,90,.25);
-        background:#151516;color:#fff;font-weight:900;cursor:pointer;
-        text-decoration:none;
-      }
-      .btn:hover{background:#1a1a1c}
-      .btn-gold{
-        background:linear-gradient(180deg,#f5d36a,#d7b25a);
-        color:#000;border:none;
-      }
-      .input, select, textarea{
-        width:100%;
-        padding:10px;border-radius:12px;
-        border:1px solid rgba(255,255,255,.12);
-        background:#0b0b0c;color:#fff;
-        outline:none;
-      }
-      textarea{resize:vertical}
-      .tablewrap{overflow:auto;border:1px solid rgba(215,178,90,.18);border-radius:18px}
-      table{width:100%;border-collapse:collapse;min-width:900px}
-      thead tr{background:rgba(215,178,90,.10)}
-      th,td{padding:10px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left;vertical-align:top}
-      .pill{
-        display:inline-flex;align-items:center;gap:6px;
-        padding:3px 8px;border-radius:999px;
-        border:1px solid rgba(215,178,90,.25);
-        background:rgba(215,178,90,.08);
-        font-size:11px;color:rgba(255,255,255,.85);font-weight:900;
-      }
-      .warn{border-color:rgba(245,211,106,.35);background:rgba(245,211,106,.10)}
-      .dangerpill{border-color:rgba(255,80,80,.35);background:rgba(255,80,80,.10)}
-      .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-      .spacer{height:10px}
-      .mini{font-size:12px;color:rgba(255,255,255,.72)}
-    </style>
+    </script>
   </head>
-  <body>
-    <div class="topbar">
-      <div class="topbar-inner">
 
-        <!-- ✅ Logo pequena no topo -->
-        <div class="brand" style="display:flex;align-items:center;gap:12px;">
-         <img src="/icon-192.png" alt="Atlas Creative" style="height:38px;width:38px;border-radius:12px;border:1px solid rgba(215,178,90,.22);padding:4px;background:#0b0b0c;">
-          <div style="display:flex;flex-direction:column;gap:2px;">
-            <div class="title">Atlas Creative</div>
-            <div class="sub">Sistema de Gestão</div>
-          </div>
-        </div>
-
-        <div class="nav">
-          <a href="/dashboard">Dashboard</a>
-          <a href="/clientes">Clientes</a>
-          <a href="/novo">Novo Pedido</a>
-          <a href="/produtos">Produtos</a>
-          <a href="/estoque">Estoque</a>
-          <a href="/financeiro">Financeiro</a>
-          <a class="danger" href="/logout">Sair</a>
+  <body class="erp">
+    <aside class="sidebar">
+      <div class="sb-brand">
+        <img src="/icon-192.png" class="sb-logo" alt="Atlas Creative">
+        <div class="sb-title">
+          <div class="sb-name">Atlas Creative</div>
+          <div class="sb-sub">Sistema ERP</div>
         </div>
       </div>
-    </div>
 
-    <div class="container">
-      ${conteudo}
-    </div>
+      <nav class="sb-nav">
+        <a class="sb-link" href="/dashboard">🏠 Dashboard</a>
+        <a class="sb-link" href="/clientes">👤 Clientes</a>
+        <a class="sb-link" href="/novo">➕ Novo Pedido</a>
+        <a class="sb-link" href="/produtos">🏷️ Produtos</a>
+        <a class="sb-link" href="/estoque">📦 Estoque</a>
+        <a class="sb-link" href="/financeiro">💰 Financeiro</a>
+        <a class="sb-link danger" href="/logout">🚪 Sair</a>
+      </nav>
 
-    <!-- PWA: registrar SW -->
+      <div class="sb-footer">
+        <div class="sb-chip">Tema Premium</div>
+        <div class="sb-mini">Preto + Dourado</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="top">
+        <button class="burger" onclick="toggleSidebar()">☰</button>
+        <div class="top-title">
+          <div class="top-h1">${esc(titulo)}</div>
+          <div class="top-sub">Atlas Creative • Gestão de pedidos, clientes e estoque</div>
+        </div>
+        <div class="top-right">
+          <span class="top-pill">Online</span>
+        </div>
+      </header>
+
+      <section class="content">
+        ${conteudo}
+      </section>
+    </main>
+
     <script>
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js');
