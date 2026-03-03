@@ -1,0 +1,24 @@
+:root{
+  --bg:#070707;
+  --panel:#0f0f10;
+  --panel2:#121214;
+  --text:#ffffff;
+  --muted:rgba(255,255,255,.72);
+  --border:rgba(255,255,255,.12);
+  --gold:#d7b25a;
+  --gold2:#f5d36a;
+  --shadow: 0 14px 40px rgba(0,0,0,.55);
+  --radius:18px;
+}
+body{
+  background:
+    radial-gradient(900px 500px at 15% -5%, rgba(215,178,90,.16), transparent 60%),
+    radial-gradient(700px 500px at 85% 0%, rgba(245,211,106,.12), transparent 55%),
+    var(--bg);
+}
+.card{box-shadow:var(--shadow)}
+.topbar{background:rgba(7,7,7,.78)!important}
+.btn{transition:transform .06s ease, filter .2s ease}
+.btn:active{transform:scale(.98)}
+.btn-gold{box-shadow:0 10px 20px rgba(215,178,90,.15)}
+.input:focus{border-color:rgba(215,178,90,.55)}
