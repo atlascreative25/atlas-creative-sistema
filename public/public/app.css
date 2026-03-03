@@ -22,3 +22,76 @@ body{
 .btn:active{transform:scale(.98)}
 .btn-gold{box-shadow:0 10px 20px rgba(215,178,90,.15)}
 .input:focus{border-color:rgba(215,178,90,.55)}
+:root{
+  --bg:#070707;
+  --panel:#0f0f10;
+  --panel2:#121214;
+  --text:#ffffff;
+  --muted:rgba(255,255,255,.72);
+  --border:rgba(215,178,90,.18);
+  --gold:#d7b25a;
+  --gold2:#f5d36a;
+  --shadow: 0 18px 60px rgba(0,0,0,.55);
+  --radius:18px;
+}
+
+/* fundo premium */
+body{
+  background:
+    radial-gradient(900px 520px at 12% -8%, rgba(215,178,90,.16), transparent 60%),
+    radial-gradient(780px 520px at 92% 0%, rgba(245,211,106,.12), transparent 55%),
+    radial-gradient(600px 420px at 40% 110%, rgba(215,178,90,.07), transparent 55%),
+    var(--bg) !important;
+}
+
+/* topo mais “vidro” */
+.topbar{
+  background: rgba(7,7,7,.72) !important;
+  border-bottom: 1px solid rgba(215,178,90,.18) !important;
+}
+
+/* cards mais elegantes */
+.card{
+  border-radius: var(--radius) !important;
+  border: 1px solid rgba(215,178,90,.20) !important;
+  box-shadow: var(--shadow) !important;
+}
+
+/* botões com mais “app feel” */
+.btn{
+  transition: transform .06s ease, filter .18s ease, background .18s ease;
+}
+.btn:active{ transform: scale(.98); }
+.btn:hover{ filter: brightness(1.02); }
+
+.btn-gold{
+  box-shadow: 0 14px 30px rgba(215,178,90,.14);
+}
+
+/* inputs com foco dourado */
+.input:focus, select:focus, textarea:focus{
+  border-color: rgba(245,211,106,.55) !important;
+  box-shadow: 0 0 0 3px rgba(215,178,90,.12);
+}
+
+/* tabelas mais chiques */
+thead tr{
+  background: rgba(215,178,90,.12) !important;
+}
+.tablewrap{
+  border: 1px solid rgba(215,178,90,.20) !important;
+}
+
+/* “pills” melhores */
+.pill{
+  border: 1px solid rgba(215,178,90,.28) !important;
+  background: rgba(215,178,90,.10) !important;
+}
+.warn{
+  border-color: rgba(245,211,106,.35) !important;
+  background: rgba(245,211,106,.10) !important;
+}
+.dangerpill{
+  border-color: rgba(255,80,80,.35) !important;
+  background: rgba(255,80,80,.10) !important;
+}
