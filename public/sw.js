@@ -1,4 +1,4 @@
-const CACHE_VERSION = "atlas-v4";
+const CACHE_VERSION = "atlas-v5";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 const PRECACHE_URLS = [
@@ -6,7 +6,8 @@ const PRECACHE_URLS = [
   "/manifest.json",
   "/icon-192.png",
   "/icon-512.png",
-  "/app.css"
+  "/app.css",
+  "/logo.png"
 ];
 
 self.addEventListener("install", (event) => {
@@ -32,7 +33,6 @@ self.addEventListener("fetch", (event) => {
 
   if (url.origin !== self.location.origin) return;
 
-  // Navegação (páginas): network-first + fallback offline
   if (req.mode === "navigate") {
     event.respondWith((async () => {
       try {
@@ -46,7 +46,6 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Assets: cache-first
   if (["style", "script", "image", "font"].includes(req.destination)) {
     event.respondWith((async () => {
       const cached = await caches.match(req);
