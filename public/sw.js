@@ -1,4 +1,4 @@
-const CACHE_VERSION = "atlas-v5";
+const CACHE_VERSION = "atlas-v15";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 const PRECACHE_URLS = [
