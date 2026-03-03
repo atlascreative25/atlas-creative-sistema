@@ -244,3 +244,39 @@ tr:hover td{ background: rgba(255,255,255,.03); }
   body.sb-open .sidebar{ left:0; }
   .burger{ display:inline-flex; }
 }
+/* ===== FIX ERP p/ páginas antigas ===== */
+.page{
+  max-width: 1180px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* força o conteúdo a não estourar e não ficar colado */
+.content{
+  padding: 14px 2px;
+}
+
+/* evita que elementos antigos com largura fixa quebrem */
+.page *{
+  max-width: 100%;
+}
+
+/* inputs e botões antigos */
+button, .btn, input, select, textarea{
+  font-size: 14px;
+}
+
+/* alguns títulos antigos */
+h1,h2,h3{
+  margin: 0 0 10px 0;
+}
+
+/* tabelas antigas não estourarem */
+table{
+  width: 100% !important;
+}
+
+/* Se existir container antigo com width fixo, ele vira responsivo */
+[style*="width:"]{
+  max-width: 100% !important;
+}
