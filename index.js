@@ -8,7 +8,7 @@ const path = require("path");
 const app = express();
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// ====== PWA: servir /public ======
+// === PWA: servir arquivos estáticos /public ===
 app.use(express.static(path.join(__dirname, "public")));
 
 app.use(
@@ -195,7 +195,7 @@ function csvEscape(v) {
   return s;
 }
 
-// ===== LAYOUT NOVO + PWA HEAD =====
+// ===== LAYOUT (luxo premium + PWA links + app.css + SW register) =====
 function layout(titulo, conteudo) {
   return `
   <html>
@@ -205,85 +205,73 @@ function layout(titulo, conteudo) {
     <title>${esc(titulo)}</title>
 
     <!-- PWA -->
-    <link rel="stylesheet" href="/app.css">
+    <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#d7b25a">
     <link rel="apple-touch-icon" href="/icon-192.png">
 
+    <!-- Premium theme -->
+    <link rel="stylesheet" href="/app.css">
+
     <style>
-      :root{
-        --bg:#070707;
-        --panel:#0f0f10;
-        --panel2:#121214;
-        --text:#ffffff;
-        --muted:rgba(255,255,255,.72);
-        --border:rgba(255,255,255,.12);
-        --gold:#d7b25a;
-        --gold2:#f5d36a;
-        --shadow: 0 10px 30px rgba(0,0,0,.45);
-        --radius:16px;
-      }
-      *{box-sizing:border-box}
-      body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,system-ui,-apple-system,Segoe UI,Roboto}
-      a{color:var(--gold);text-decoration:none}
-      a:hover{opacity:.9}
+      /* base styles (resto fica no app.css) */
       .topbar{
         position:sticky;top:0;z-index:9;
         background:rgba(7,7,7,.85);backdrop-filter: blur(10px);
-        border-bottom:1px solid var(--border);
+        border-bottom:1px solid rgba(255,255,255,.12);
       }
       .topbar-inner{
         max-width:1200px;margin:auto;padding:14px 18px;
         display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
       }
       .brand{display:flex;flex-direction:column;gap:2px}
-      .brand .title{color:var(--gold2);font-weight:900;font-size:20px;letter-spacing:.3px}
-      .brand .sub{font-size:12px;color:var(--muted)}
+      .brand .title{color:#f5d36a;font-weight:900;font-size:20px;letter-spacing:.3px}
+      .brand .sub{font-size:12px;color:rgba(255,255,255,.72)}
       .nav{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
       .nav a{
         padding:8px 10px;border-radius:12px;
         border:1px solid transparent;
-        color:var(--gold2);font-weight:800;font-size:13px;
+        color:#f5d36a;font-weight:800;font-size:13px;
+        text-decoration:none;
       }
       .nav a:hover{border-color:rgba(215,178,90,.35);background:rgba(215,178,90,.08)}
       .nav .danger{color:rgba(255,255,255,.85)}
       .container{max-width:1200px;margin:auto;padding:18px}
-      .h1{margin:0 0 10px;color:var(--gold2);font-size:22px}
+      .h1{margin:0 0 10px;color:#f5d36a;font-size:22px}
       .card{
-        background:linear-gradient(180deg,var(--panel),var(--panel2));
+        background:linear-gradient(180deg,#0f0f10,#121214);
         border:1px solid rgba(215,178,90,.18);
-        border-radius:var(--radius);
-        box-shadow:var(--shadow);
+        border-radius:18px;
         padding:14px;
       }
       .grid{display:grid;gap:12px}
       .grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
       .grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
       @media(max-width:900px){.grid-2,.grid-3{grid-template-columns:1fr}}
-      .muted{color:var(--muted)}
+      .muted{color:rgba(255,255,255,.72)}
       .kpi{display:flex;flex-direction:column;gap:6px}
-      .kpi .label{font-size:12px;color:var(--muted)}
-      .kpi .value{font-size:22px;font-weight:900;color:var(--gold2)}
+      .kpi .label{font-size:12px;color:rgba(255,255,255,.72)}
+      .kpi .value{font-size:22px;font-weight:900;color:#f5d36a}
       .btn{
         display:inline-flex;align-items:center;justify-content:center;gap:8px;
         padding:10px 12px;border-radius:12px;
         border:1px solid rgba(215,178,90,.25);
         background:#151516;color:#fff;font-weight:900;cursor:pointer;
+        text-decoration:none;
       }
       .btn:hover{background:#1a1a1c}
       .btn-gold{
-        background:linear-gradient(180deg,var(--gold2),var(--gold));
+        background:linear-gradient(180deg,#f5d36a,#d7b25a);
         color:#000;border:none;
       }
-      .btn-gold:hover{filter:brightness(.98)}
       .input, select, textarea{
         width:100%;
         padding:10px;border-radius:12px;
-        border:1px solid var(--border);
+        border:1px solid rgba(255,255,255,.12);
         background:#0b0b0c;color:#fff;
         outline:none;
       }
       textarea{resize:vertical}
-      .tablewrap{overflow:auto;border:1px solid rgba(215,178,90,.18);border-radius:var(--radius)}
+      .tablewrap{overflow:auto;border:1px solid rgba(215,178,90,.18);border-radius:18px}
       table{width:100%;border-collapse:collapse;min-width:900px}
       thead tr{background:rgba(215,178,90,.10)}
       th,td{padding:10px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left;vertical-align:top}
@@ -298,7 +286,7 @@ function layout(titulo, conteudo) {
       .dangerpill{border-color:rgba(255,80,80,.35);background:rgba(255,80,80,.10)}
       .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
       .spacer{height:10px}
-      .mini{font-size:12px;color:var(--muted)}
+      .mini{font-size:12px;color:rgba(255,255,255,.72)}
     </style>
   </head>
   <body>
@@ -409,7 +397,40 @@ const EntregaSchema = new mongoose.Schema(
   { _id: false }
 );
 
-// ===== MATERIAIS (ESTOQUE AUTOMÁTICO) =====
+// ===== ESTOQUE (itens + movimentações) =====
+const EstoqueItemSchema = new mongoose.Schema(
+  {
+    nome: { type: String, required: true },
+    categoria: { type: String, default: "Geral" },
+    unidade: { type: String, default: "un" },
+    quantidade: { type: Number, default: 0 },
+    minimo: { type: Number, default: 0 },
+    custo: { type: Number, default: 0 },
+    fornecedor: { type: String, default: "" },
+    local: { type: String, default: "" },
+    observacao: { type: String, default: "" },
+    criadoEm: { type: Date, default: Date.now },
+    atualizadoEm: { type: Date, default: Date.now },
+  },
+  { versionKey: false }
+);
+const EstoqueItem = mongoose.model("EstoqueItem", EstoqueItemSchema);
+
+const EstoqueMovSchema = new mongoose.Schema(
+  {
+    itemId: { type: mongoose.Schema.Types.ObjectId, ref: "EstoqueItem", required: true },
+    tipo: { type: String, required: true }, // Entrada / Saída / Ajuste
+    quantidade: { type: Number, required: true },
+    motivo: { type: String, default: "" },
+    pedidoNumero: { type: Number, default: null },
+    custoUnitario: { type: Number, default: null },
+    criadoEm: { type: Date, default: Date.now },
+  },
+  { versionKey: false }
+);
+const EstoqueMov = mongoose.model("EstoqueMov", EstoqueMovSchema);
+
+// ===== PEDIDO: materiais + baixa automática 1x =====
 const PedidoMaterialSchema = new mongoose.Schema(
   {
     itemId: { type: mongoose.Schema.Types.ObjectId, ref: "EstoqueItem", required: true },
@@ -438,7 +459,6 @@ const PedidoSchema = new mongoose.Schema(
     checklist: { type: ChecklistSchema, default: () => ({}) },
     entrega: { type: EntregaSchema, default: () => ({}) },
 
-    // estoque automático
     materiais: { type: [PedidoMaterialSchema], default: [] },
     estoqueBaixado: { type: Boolean, default: false },
 
@@ -448,6 +468,7 @@ const PedidoSchema = new mongoose.Schema(
 );
 const Pedido = mongoose.model("Pedido", PedidoSchema);
 
+// ===== FINANCEIRO =====
 const DespesaSchema = new mongoose.Schema(
   {
     descricao: { type: String, required: true },
@@ -460,47 +481,11 @@ const DespesaSchema = new mongoose.Schema(
 );
 const Despesa = mongoose.model("Despesa", DespesaSchema);
 
-// ===== ESTOQUE =====
-const EstoqueItemSchema = new mongoose.Schema(
-  {
-    nome: { type: String, required: true },
-    categoria: { type: String, default: "Geral" },
-    unidade: { type: String, default: "un" },
-    quantidade: { type: Number, default: 0 },
-    minimo: { type: Number, default: 0 },
-    custo: { type: Number, default: 0 },
-    fornecedor: { type: String, default: "" },
-    local: { type: String, default: "" },
-    observacao: { type: String, default: "" },
-    criadoEm: { type: Date, default: Date.now },
-    atualizadoEm: { type: Date, default: Date.now },
-  },
-  { versionKey: false }
-);
-
-const EstoqueMovSchema = new mongoose.Schema(
-  {
-    itemId: { type: mongoose.Schema.Types.ObjectId, ref: "EstoqueItem", required: true },
-    tipo: { type: String, required: true }, // Entrada / Saída / Ajuste
-    quantidade: { type: Number, required: true },
-    motivo: { type: String, default: "" },
-    pedidoNumero: { type: Number, default: null },
-    custoUnitario: { type: Number, default: null },
-    criadoEm: { type: Date, default: Date.now },
-  },
-  { versionKey: false }
-);
-
-const EstoqueItem = mongoose.model("EstoqueItem", EstoqueItemSchema);
-const EstoqueMov = mongoose.model("EstoqueMov", EstoqueMovSchema);
-
-// ===== FUNÇÃO: BAIXAR ESTOQUE UMA VEZ =====
 async function baixarEstoqueDoPedidoSePreciso(pedido, novoStatus) {
   const deveBaixar = (novoStatus === "Em produção" || novoStatus === "Entregue");
   if (!deveBaixar) return;
-
-  if (pedido.estoqueBaixado) return; // já baixou uma vez
-  if (!pedido.materiais || pedido.materiais.length === 0) return; // sem materiais, não faz nada
+  if (pedido.estoqueBaixado) return;
+  if (!pedido.materiais || pedido.materiais.length === 0) return;
 
   for (const mat of pedido.materiais) {
     const item = await EstoqueItem.findById(mat.itemId);
@@ -589,7 +574,7 @@ app.get("/produtos", requireLogin, async (req, res) => {
 
     <div class="grid grid-2">
       <div class="card">
-        <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Cadastrar tipo</div>
+        <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Cadastrar tipo</div>
         <form method="POST" action="/produtos">
           <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
             <div>
@@ -607,7 +592,7 @@ app.get("/produtos", requireLogin, async (req, res) => {
       </div>
 
       <div class="card">
-        <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Dica</div>
+        <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Dica</div>
         <div class="muted">
           O tipo serve pra puxar o preço sugerido no “Novo Pedido”. Você ainda pode editar o valor depois no pedido.
         </div>
@@ -617,7 +602,7 @@ app.get("/produtos", requireLogin, async (req, res) => {
     <div class="spacer"></div>
 
     <div class="card">
-      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Tipos cadastrados</div>
+      <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Tipos cadastrados</div>
       <div class="tablewrap">
         <table style="min-width:780px;">
           <thead>
@@ -645,7 +630,7 @@ app.post("/produtos", requireLogin, async (req, res) => {
 
   try {
     await ProdutoTipo.create({ nome, precoSugerido: preco });
-  } catch (e) {
+  } catch {
     return res.send(layout("Erro", `<div class="card">Esse tipo já existe. <a href="/produtos">Voltar</a></div>`));
   }
   res.redirect("/produtos");
@@ -660,13 +645,11 @@ app.post("/produtos/:id/delete", requireLogin, async (req, res) => {
 app.get("/clientes", requireLogin, async (req, res) => {
   const q = String(req.query.q || "").trim();
   const query = q
-    ? {
-        $or: [
-          { nome: { $regex: q, $options: "i" } },
-          { whatsapp: { $regex: q, $options: "i" } },
-          { observacoes: { $regex: q, $options: "i" } },
-        ],
-      }
+    ? { $or: [
+        { nome: { $regex: q, $options: "i" } },
+        { whatsapp: { $regex: q, $options: "i" } },
+        { observacoes: { $regex: q, $options: "i" } },
+      ] }
     : {};
 
   const clientes = await Cliente.find(query).sort({ criadoEm: -1 });
@@ -684,18 +667,10 @@ app.get("/clientes", requireLogin, async (req, res) => {
       const wa = waLinkBR(c.whatsapp);
       return `
         <tr>
-          <td>
-            <a href="/clientes/${c._id}" style="font-weight:900;color:var(--gold2)">${esc(c.nome)}</a>
-          </td>
+          <td><a href="/clientes/${c._id}" style="font-weight:900;color:#f5d36a">${esc(c.nome)}</a></td>
           <td>${esc(c.whatsapp)}</td>
           <td>${esc(c.observacoes)}</td>
-          <td>
-            ${
-              wa
-                ? `<a class="btn btn-gold" href="${esc(wa)}" target="_blank">WhatsApp</a>`
-                : `<span class="muted">Sem número</span>`
-            }
-          </td>
+          <td>${wa ? `<a class="btn btn-gold" href="${esc(wa)}" target="_blank">WhatsApp</a>` : `<span class="muted">Sem número</span>`}</td>
         </tr>
       `;
     })
@@ -707,30 +682,21 @@ app.get("/clientes", requireLogin, async (req, res) => {
 
     <div class="grid grid-2">
       <div class="card">
-        <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Cadastrar cliente</div>
+        <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Cadastrar cliente</div>
         <form method="POST" action="/clientes">
           <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
-            <div>
-              <div class="mini">Nome</div>
-              <input class="input" name="nome" required>
-            </div>
-            <div>
-              <div class="mini">WhatsApp</div>
-              <input class="input" name="whatsapp" placeholder="(21) 9xxxx-xxxx">
-            </div>
+            <div><div class="mini">Nome</div><input class="input" name="nome" required></div>
+            <div><div class="mini">WhatsApp</div><input class="input" name="whatsapp" placeholder="(21) 9xxxx-xxxx"></div>
           </div>
           <div class="spacer"></div>
-          <div>
-            <div class="mini">Observações</div>
-            <input class="input" name="observacoes" placeholder="Ex: prefere retirada / cliente fixo">
-          </div>
+          <div><div class="mini">Observações</div><input class="input" name="observacoes" placeholder="Ex: prefere retirada / cliente fixo"></div>
           <div class="spacer"></div>
           <button class="btn btn-gold" type="submit">Salvar cliente</button>
         </form>
       </div>
 
       <div class="card">
-        <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Resumo</div>
+        <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Resumo</div>
         <div class="muted">Total de clientes: <b style="color:#fff">${clientes.length}</b></div>
       </div>
     </div>
@@ -738,25 +704,15 @@ app.get("/clientes", requireLogin, async (req, res) => {
     <div class="spacer"></div>
 
     <div class="card">
-      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Lista</div>
+      <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Lista</div>
       <div class="tablewrap">
         <table style="min-width:900px;">
-          <thead>
-            <tr>
-              <th>Nome</th>
-              <th>WhatsApp</th>
-              <th>Observações</th>
-              <th>Ação</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${linhas || `<tr><td colspan="4" class="muted" style="padding:12px;">Nenhum cliente encontrado.</td></tr>`}
-          </tbody>
+          <thead><tr><th>Nome</th><th>WhatsApp</th><th>Observações</th><th>Ação</th></tr></thead>
+          <tbody>${linhas || `<tr><td colspan="4" class="muted" style="padding:12px;">Nenhum cliente encontrado.</td></tr>`}</tbody>
         </table>
       </div>
     </div>
   `;
-
   res.send(layout("Clientes", conteudo));
 });
 
@@ -816,14 +772,8 @@ app.get("/novo", requireLogin, async (req, res) => {
         <div class="spacer"></div>
 
         <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
-          <div>
-            <div class="mini">Valor total</div>
-            <input class="input" id="valor" name="valor" required placeholder="Ex: 120,00">
-          </div>
-          <div>
-            <div class="mini">Sinal / Entrada (opcional)</div>
-            <input class="input" id="sinal" name="sinal" placeholder="Ex: 50,00">
-          </div>
+          <div><div class="mini">Valor total</div><input class="input" id="valor" name="valor" required placeholder="Ex: 120,00"></div>
+          <div><div class="mini">Sinal / Entrada (opcional)</div><input class="input" id="sinal" name="sinal" placeholder="Ex: 50,00"></div>
         </div>
 
         <div class="spacer"></div>
@@ -954,7 +904,7 @@ app.get("/dashboard", requireLogin, async (req, res) => {
         return `
           <div style="border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:10px;margin-bottom:8px;">
             <div class="row" style="justify-content:space-between;">
-              <a href="/pedido/${p._id}" style="color:var(--gold2);font-weight:900;">#${esc(num)}</a>
+              <a href="/pedido/${p._id}" style="color:#f5d36a;font-weight:900;text-decoration:none;">#${esc(num)}</a>
               <span class="pill">${esc(p.status)}</span>
             </div>
             <div style="margin-top:6px;"><b>${esc(clienteNome)}</b> — ${esc(tipo + p.produto)}</div>
@@ -973,7 +923,7 @@ app.get("/dashboard", requireLogin, async (req, res) => {
       const tipo = p.tipoProduto ? `${p.tipoProduto} — ` : "";
       return `
         <tr>
-          <td><a href="/pedido/${p._id}" style="font-weight:900;color:var(--gold2)">#${esc(num)}</a> ${badge}</td>
+          <td><a href="/pedido/${p._id}" style="font-weight:900;color:#f5d36a;text-decoration:none;">#${esc(num)}</a> ${badge}</td>
           <td>${esc(clienteNome)}</td>
           <td>${esc(tipo + p.produto)}</td>
           <td>R$ ${money(p.valor)}</td>
@@ -993,19 +943,15 @@ app.get("/dashboard", requireLogin, async (req, res) => {
 
   const blocoBaixoEstoque = `
     <div class="card" style="margin-top:12px;">
-      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Baixo estoque</div>
+      <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Baixo estoque</div>
       ${
         itensBaixo.length
-          ? itensBaixo
-              .map(
-                (i) => `
-          <div style="border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:10px;margin-bottom:8px;">
-            <a href="/estoque/${i._id}" style="font-weight:900;color:var(--gold2)">${esc(i.nome)}</a>
-            <div class="mini" style="margin-top:4px;">${esc(String(i.quantidade || 0))} ${esc(i.unidade || "un")} (mín: ${esc(String(i.minimo || 0))})</div>
-          </div>
-        `
-              )
-              .join("")
+          ? itensBaixo.map((i) => `
+            <div style="border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:10px;margin-bottom:8px;">
+              <a href="/estoque/${i._id}" style="font-weight:900;color:#f5d36a;text-decoration:none;">${esc(i.nome)}</a>
+              <div class="mini" style="margin-top:4px;">${esc(String(i.quantidade || 0))} ${esc(i.unidade || "un")} (mín: ${esc(String(i.minimo || 0))})</div>
+            </div>
+          `).join("")
           : `<div class="muted">Tudo ok no estoque 👌</div>`
       }
     </div>
@@ -1044,11 +990,11 @@ app.get("/dashboard", requireLogin, async (req, res) => {
 
     <div class="grid grid-2">
       <div class="card">
-        <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Pendentes</div>
+        <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Pendentes</div>
         ${cardList(pendentes)}
       </div>
       <div class="card">
-        <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Pagos / Finalizados</div>
+        <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Pagos / Finalizados</div>
         ${cardList(pagos)}
       </div>
     </div>
@@ -1056,7 +1002,7 @@ app.get("/dashboard", requireLogin, async (req, res) => {
     <div class="spacer"></div>
 
     <div class="card">
-      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">
+      <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">
         Pedidos (últimos) ${q ? `— buscando: "${esc(q)}"` : ""}
       </div>
       <div class="tablewrap">
@@ -1090,20 +1036,17 @@ app.post("/pedido/:id/toggle-archive", requireLogin, async (req, res) => {
     p.arquivado = !Boolean(p.arquivado);
     await p.save();
   }
-
   const mes = String(req.query.mes || "").trim();
   const q = String(req.query.q || "").trim();
   const showArchived = String(req.query.show_archived || "") === "1";
-
   const qs = new URLSearchParams();
   if (mes) qs.set("mes", mes);
   if (q) qs.set("q", q);
   if (showArchived) qs.set("show_archived", "1");
-
   return res.redirect(`/dashboard${qs.toString() ? "?" + qs.toString() : ""}`);
 });
 
-// ===== TELA DO PEDIDO =====
+// ===== PEDIDO (tela + materiais + whatsapp + entrega + status baixa estoque) =====
 function checklistCheckbox(label, name, checked) {
   const chk = checked ? "checked" : "";
   return `
@@ -1179,16 +1122,13 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
 
         <div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;">
           <div style="border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:10px;">
-            <div class="mini">Valor</div>
-            <div style="font-weight:900;">R$ ${money(pedido.valor)}</div>
+            <div class="mini">Valor</div><div style="font-weight:900;">R$ ${money(pedido.valor)}</div>
           </div>
           <div style="border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:10px;">
-            <div class="mini">Sinal</div>
-            <div style="font-weight:900;">R$ ${money(pedido.sinal || 0)}</div>
+            <div class="mini">Sinal</div><div style="font-weight:900;">R$ ${money(pedido.sinal || 0)}</div>
           </div>
           <div style="border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:10px;">
-            <div class="mini">Saldo</div>
-            <div style="font-weight:900;">R$ ${money(saldo)}</div>
+            <div class="mini">Saldo</div><div style="font-weight:900;">R$ ${money(saldo)}</div>
           </div>
         </div>
 
@@ -1202,13 +1142,12 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
         <div class="spacer"></div>
 
         <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:12px;">
-          <div style="color:var(--gold2);font-weight:900;margin-bottom:8px;">Mensagens prontas (WhatsApp)</div>
+          <div style="color:#f5d36a;font-weight:900;margin-bottom:8px;">Mensagens prontas (WhatsApp)</div>
 
           <div class="row">
             <select class="input" id="tplSel" style="flex:1;min-width:240px;">
               ${templates.map((t) => `<option value="${esc(t.key)}">${esc(t.label)}</option>`).join("")}
             </select>
-
             <button class="btn btn-gold" type="button" onclick="openWA()">Enviar no WhatsApp</button>
           </div>
 
@@ -1222,14 +1161,8 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
               const templates = ${templatesJSON};
               const sel = document.getElementById('tplSel');
               const ta = document.getElementById('tplText');
-              function getTpl(){
-                const key = sel.value;
-                return templates.find(t => t.key === key) || templates[0];
-              }
-              function refresh(){
-                const t = getTpl();
-                ta.value = t ? t.text : '';
-              }
+              function getTpl(){ return templates.find(t => t.key === sel.value) || templates[0]; }
+              function refresh(){ const t = getTpl(); ta.value = t ? t.text : ''; }
               sel.addEventListener('change', refresh);
               refresh();
 
@@ -1246,7 +1179,7 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
       </div>
 
       <div class="card">
-        <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Atualizações</div>
+        <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Atualizações</div>
 
         <form method="POST" action="/pedido/${pedido._id}/status" class="row" style="margin:0 0 10px;">
           <select class="input" name="status" style="flex:1;min-width:240px;">${statusOptions(STATUS_LIST, pedido.status)}</select>
@@ -1269,7 +1202,7 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
         </form>
 
         <form method="POST" action="/pedido/${pedido._id}/entrega" style="margin-top:12px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px;">
-          <div style="color:var(--gold2);font-weight:900;margin-bottom:8px;">Entrega / Retirada</div>
+          <div style="color:#f5d36a;font-weight:900;margin-bottom:8px;">Entrega / Retirada</div>
 
           <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
             <div>
@@ -1308,7 +1241,7 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
     <div class="spacer"></div>
 
     <div class="card">
-      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Materiais usados (estoque)</div>
+      <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Materiais usados (estoque)</div>
 
       <form method="POST" action="/pedido/${pedido._id}/material" class="grid" style="grid-template-columns:2fr 1fr 1fr;gap:10px;">
         <select class="input" name="itemId" required>${itensOpt}</select>
@@ -1320,13 +1253,7 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
 
       <div class="tablewrap">
         <table style="min-width:800px;">
-          <thead>
-            <tr>
-              <th>Item</th>
-              <th>Quantidade</th>
-              <th>Ação</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Item</th><th>Quantidade</th><th>Ação</th></tr></thead>
           <tbody>
             ${materiaisLinhas || `<tr><td colspan="3" class="muted" style="padding:12px;">Nenhum material adicionado ainda.</td></tr>`}
           </tbody>
@@ -1334,14 +1261,14 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
       </div>
 
       <div class="mini" style="margin-top:10px;">
-        ⚠️ Dica: adicione os materiais antes de colocar o status em <b>Em produção</b> ou <b>Entregue</b>.
+        Dica: adicione os materiais antes de colocar o status em <b>Em produção</b> ou <b>Entregue</b>.
       </div>
     </div>
 
     <div class="spacer"></div>
 
     <div class="card">
-      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Checklist</div>
+      <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Checklist</div>
       <form method="POST" action="/pedido/${pedido._id}/checklist" class="grid grid-2">
         ${checklistCheckbox("Arte recebida", "arteRecebida", Boolean(pedido.checklist?.arteRecebida))}
         ${checklistCheckbox("Arte aprovada", "arteAprovada", Boolean(pedido.checklist?.arteAprovada))}
@@ -1358,7 +1285,7 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
     <div class="spacer"></div>
 
     <div class="card">
-      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Anotações</div>
+      <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Anotações</div>
       <form method="POST" action="/pedido/${pedido._id}/anotacoes">
         <textarea class="input" name="anotacoes" rows="6">${esc(pedido.anotacoes || "")}</textarea>
         <div class="spacer"></div>
@@ -1366,11 +1293,9 @@ app.get("/pedido/:id", requireLogin, async (req, res) => {
       </form>
     </div>
   `;
-
   res.send(layout(`Pedido #${num}`, conteudo));
 });
 
-// adicionar material ao pedido
 app.post("/pedido/:id/material", requireLogin, async (req, res) => {
   const pedido = await Pedido.findById(req.params.id);
   if (!pedido) return res.redirect("/dashboard");
@@ -1393,11 +1318,9 @@ app.post("/pedido/:id/material", requireLogin, async (req, res) => {
   res.redirect(`/pedido/${pedido._id}`);
 });
 
-// remover material do pedido
 app.post("/pedido/:id/material/:matId/delete", requireLogin, async (req, res) => {
   const pedido = await Pedido.findById(req.params.id);
   if (!pedido) return res.redirect("/dashboard");
-
   pedido.materiais = (pedido.materiais || []).filter(m => String(m._id) !== String(req.params.matId));
   await pedido.save();
   res.redirect(`/pedido/${pedido._id}`);
@@ -1408,7 +1331,6 @@ app.post("/pedido/:id/valores", requireLogin, async (req, res) => {
   const s = parseMoneyBR(req.body.sinal);
   if (!Number.isFinite(v) || v < 0) return res.send(layout("Erro", `<div class="card">Valor inválido. <a href="/pedido/${req.params.id}">Voltar</a></div>`));
   if (!Number.isFinite(s) || s < 0) return res.send(layout("Erro", `<div class="card">Sinal inválido. <a href="/pedido/${req.params.id}">Voltar</a></div>`));
-
   const sinalVal = Math.max(0, Math.min(v, s));
   await Pedido.findByIdAndUpdate(req.params.id, { valor: v, sinal: sinalVal });
   res.redirect(`/pedido/${req.params.id}`);
@@ -1432,7 +1354,6 @@ app.post("/pedido/:id/checklist", requireLogin, async (req, res) => {
   res.redirect(`/pedido/${req.params.id}`);
 });
 
-// ✅ status + baixa automática de estoque
 app.post("/pedido/:id/status", requireLogin, async (req, res) => {
   const novoStatus = String(req.body.status || "").trim();
   if (!STATUS_LIST.includes(novoStatus)) {
@@ -1445,7 +1366,6 @@ app.post("/pedido/:id/status", requireLogin, async (req, res) => {
   pedido.status = novoStatus;
   await pedido.save();
 
-  // baixa estoque 1x quando entrar em “Em produção” ou “Entregue”
   await baixarEstoqueDoPedidoSePreciso(pedido, novoStatus);
 
   return res.redirect(`/pedido/${req.params.id}`);
@@ -1523,29 +1443,10 @@ app.get("/pedido/:id/recibo.pdf", requireLogin, async (req, res) => {
     doc.moveDown();
   }
 
-  doc.fontSize(12).text("Checklist:", { underline: true });
-  doc.moveDown(0.3);
-  const ck = pedido.checklist || {};
-  const items = [
-    ["Arte recebida", !!ck.arteRecebida],
-    ["Arte aprovada", !!ck.arteAprovada],
-    ["Impresso", !!ck.impresso],
-    ["Cortado", !!ck.cortado],
-    ["Entregue", !!ck.entregue],
-  ];
-  items.forEach(([label, ok]) => doc.text(`${ok ? "✅" : "⬜"} ${label}`));
-
-  if (pedido.anotacoes) {
-    doc.moveDown();
-    doc.fontSize(12).text("Observações:", { underline: true });
-    doc.moveDown(0.3);
-    doc.fontSize(11).text(pedido.anotacoes);
-  }
-
   doc.end();
 });
 
-// ===== FINANCEIRO (mantido) =====
+// ===== FINANCEIRO =====
 app.get("/financeiro", requireLogin, async (req, res) => {
   const mesParam = String(req.query.mes || "").trim();
   const { start: ini, end: fim, key: mesKey } = monthRangeFromKey(mesParam || monthKeyFromDate(new Date()));
@@ -1581,31 +1482,19 @@ app.get("/financeiro", requireLogin, async (req, res) => {
     <div class="muted" style="margin-bottom:8px;">Mês: <b style="color:#fff">${esc(monthLabelPT(mesKey))}</b></div>
 
     <div class="grid grid-3" style="max-width:920px;">
-      <div class="card kpi">
-        <div class="label">Faturamento (Pago)</div>
-        <div class="value">R$ ${money(faturamentoMes)}</div>
-      </div>
-      <div class="card kpi">
-        <div class="label">Despesas</div>
-        <div class="value" style="color:#fff">R$ ${money(totalDespesas)}</div>
-      </div>
-      <div class="card kpi">
-        <div class="label">Lucro líquido</div>
-        <div class="value">R$ ${money(lucro)}</div>
-      </div>
+      <div class="card kpi"><div class="label">Faturamento (Pago)</div><div class="value">R$ ${money(faturamentoMes)}</div></div>
+      <div class="card kpi"><div class="label">Despesas</div><div class="value" style="color:#fff">R$ ${money(totalDespesas)}</div></div>
+      <div class="card kpi"><div class="label">Lucro líquido</div><div class="value">R$ ${money(lucro)}</div></div>
     </div>
 
     <div class="spacer"></div>
 
     <div class="grid grid-2">
       <div class="card">
-        <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Adicionar despesa</div>
+        <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Adicionar despesa</div>
         <form method="POST" action="/financeiro/despesa?mes=${encodeURIComponent(mesKey)}">
           <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
-            <div>
-              <div class="mini">Descrição</div>
-              <input class="input" name="descricao" required>
-            </div>
+            <div><div class="mini">Descrição</div><input class="input" name="descricao" required></div>
             <div>
               <div class="mini">Categoria</div>
               <select class="input" name="categoria">
@@ -1618,46 +1507,29 @@ app.get("/financeiro", requireLogin, async (req, res) => {
           <div class="spacer"></div>
 
           <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
-            <div>
-              <div class="mini">Valor</div>
-              <input class="input" name="valor" required>
-            </div>
-            <div>
-              <div class="mini">Data (dd/mm/aaaa opcional)</div>
-              <input class="input" name="data" placeholder="Ex: 01/03/2026">
-            </div>
+            <div><div class="mini">Valor</div><input class="input" name="valor" required></div>
+            <div><div class="mini">Data (dd/mm/aaaa opcional)</div><input class="input" name="data" placeholder="Ex: 01/03/2026"></div>
           </div>
 
           <div class="spacer"></div>
-
           <button class="btn btn-gold" type="submit">Salvar despesa</button>
         </form>
       </div>
 
       <div class="card">
-        <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Dica</div>
-        <div class="muted">O lucro líquido aqui é: faturamento (status “Pago”) - despesas do mês.</div>
+        <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Dica</div>
+        <div class="muted">O lucro líquido é: faturamento (status “Pago”) - despesas do mês.</div>
       </div>
     </div>
 
     <div class="spacer"></div>
 
     <div class="card">
-      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Despesas do mês</div>
+      <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Despesas do mês</div>
       <div class="tablewrap">
         <table style="min-width:980px;">
-          <thead>
-            <tr>
-              <th>Data</th>
-              <th>Categoria</th>
-              <th>Descrição</th>
-              <th>Valor</th>
-              <th>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${linhas || `<tr><td colspan="5" class="muted" style="padding:12px;">Nenhuma despesa cadastrada neste mês.</td></tr>`}
-          </tbody>
+          <thead><tr><th>Data</th><th>Categoria</th><th>Descrição</th><th>Valor</th><th>Ações</th></tr></thead>
+          <tbody>${linhas || `<tr><td colspan="5" class="muted" style="padding:12px;">Nenhuma despesa cadastrada neste mês.</td></tr>`}</tbody>
         </table>
       </div>
     </div>
@@ -1694,7 +1566,7 @@ app.post("/despesa/:id/delete", requireLogin, async (req, res) => {
   return res.redirect(mes ? `/financeiro?mes=${encodeURIComponent(mes)}` : "/financeiro");
 });
 
-// ===== ESTOQUE (mantido) =====
+// ===== ESTOQUE =====
 app.get("/estoque", requireLogin, async (req, res) => {
   const q = String(req.query.q || "").trim();
   const filtro = q
@@ -1719,36 +1591,34 @@ app.get("/estoque", requireLogin, async (req, res) => {
     </form>
   `;
 
-  const linhas = itens
-    .map((i) => {
-      const qtd = Number(i.quantidade || 0);
-      const min = Number(i.minimo || 0);
-      const estado =
-        qtd <= 0 ? `<span class="pill dangerpill">ZERADO</span>` :
-        qtd <= min ? `<span class="pill warn">BAIXO</span>` :
-        `<span class="pill">OK</span>`;
+  const linhas = itens.map((i) => {
+    const qtd = Number(i.quantidade || 0);
+    const min = Number(i.minimo || 0);
+    const estado =
+      qtd <= 0 ? `<span class="pill dangerpill">ZERADO</span>` :
+      qtd <= min ? `<span class="pill warn">BAIXO</span>` :
+      `<span class="pill">OK</span>`;
 
-      return `
-        <tr>
-          <td>
-            <a href="/estoque/${i._id}" style="font-weight:900;color:var(--gold2)">${esc(i.nome)}</a>
-            <div class="mini">${esc(i.categoria || "Geral")}</div>
-          </td>
-          <td>${estado}</td>
-          <td>${esc(String(qtd))} ${esc(i.unidade || "un")}</td>
-          <td>${esc(String(min))}</td>
-          <td>R$ ${money(i.custo || 0)}</td>
-          <td>${esc(i.fornecedor || "-")}</td>
-          <td>${esc(i.local || "-")}</td>
-          <td>
-            <form method="POST" action="/estoque/${i._id}/delete" onsubmit="return confirm('Excluir item do estoque?');" style="margin:0;">
-              <button class="btn" type="submit">Excluir</button>
-            </form>
-          </td>
-        </tr>
-      `;
-    })
-    .join("");
+    return `
+      <tr>
+        <td>
+          <a href="/estoque/${i._id}" style="font-weight:900;color:#f5d36a;text-decoration:none;">${esc(i.nome)}</a>
+          <div class="mini">${esc(i.categoria || "Geral")}</div>
+        </td>
+        <td>${estado}</td>
+        <td>${esc(String(qtd))} ${esc(i.unidade || "un")}</td>
+        <td>${esc(String(min))}</td>
+        <td>R$ ${money(i.custo || 0)}</td>
+        <td>${esc(i.fornecedor || "-")}</td>
+        <td>${esc(i.local || "-")}</td>
+        <td>
+          <form method="POST" action="/estoque/${i._id}/delete" onsubmit="return confirm('Excluir item do estoque?');" style="margin:0;">
+            <button class="btn" type="submit">Excluir</button>
+          </form>
+        </td>
+      </tr>
+    `;
+  }).join("");
 
   const conteudo = `
     <div class="row" style="justify-content:space-between;margin-bottom:10px;">
@@ -1760,59 +1630,37 @@ app.get("/estoque", requireLogin, async (req, res) => {
 
     <div class="grid grid-2">
       <div class="card">
-        <div style="color:var(--gold2);font-weight:900;margin-bottom:8px;">Cadastrar item</div>
+        <div style="color:#f5d36a;font-weight:900;margin-bottom:8px;">Cadastrar item</div>
         <form method="POST" action="/estoque">
           <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
-            <div>
-              <div class="mini">Nome</div>
-              <input class="input" name="nome" required placeholder="Ex: Papel couchê 300g A4">
-            </div>
-            <div>
-              <div class="mini">Categoria</div>
-              <input class="input" name="categoria" placeholder="Papel / Tinta / Vinil / Embalagem...">
-            </div>
-            <div>
-              <div class="mini">Unidade</div>
-              <input class="input" name="unidade" placeholder="un / folha / metro / litro">
-            </div>
-            <div>
-              <div class="mini">Estoque mínimo</div>
-              <input class="input" name="minimo" placeholder="Ex: 10">
-            </div>
+            <div><div class="mini">Nome</div><input class="input" name="nome" required placeholder="Ex: Papel couchê 300g A4"></div>
+            <div><div class="mini">Categoria</div><input class="input" name="categoria" placeholder="Papel / Tinta / Vinil / Embalagem..."></div>
+            <div><div class="mini">Unidade</div><input class="input" name="unidade" placeholder="un / folha / metro / litro"></div>
+            <div><div class="mini">Estoque mínimo</div><input class="input" name="minimo" placeholder="Ex: 10"></div>
           </div>
 
           <div class="spacer"></div>
 
           <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
-            <div>
-              <div class="mini">Fornecedor</div>
-              <input class="input" name="fornecedor" placeholder="Ex: Kalunga / Mercado Livre">
-            </div>
-            <div>
-              <div class="mini">Local</div>
-              <input class="input" name="local" placeholder="Ex: Prateleira 1 / Gaveta A">
-            </div>
+            <div><div class="mini">Fornecedor</div><input class="input" name="fornecedor" placeholder="Ex: Kalunga / Mercado Livre"></div>
+            <div><div class="mini">Local</div><input class="input" name="local" placeholder="Ex: Prateleira 1 / Gaveta A"></div>
           </div>
 
           <div class="spacer"></div>
 
-          <div>
-            <div class="mini">Observação</div>
-            <input class="input" name="observacao" placeholder="Ex: usar na L4260 / válido para tags...">
-          </div>
+          <div><div class="mini">Observação</div><input class="input" name="observacao" placeholder="Ex: usar na L4260 / válido para tags..."></div>
 
           <div class="spacer"></div>
-
           <button class="btn btn-gold" type="submit">Salvar item</button>
         </form>
       </div>
 
       <div class="card">
-        <div style="color:var(--gold2);font-weight:900;margin-bottom:8px;">Itens com baixo estoque</div>
+        <div style="color:#f5d36a;font-weight:900;margin-bottom:8px;">Itens com baixo estoque</div>
         ${
           baixo.slice(0, 8).map(i => `
             <div style="border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:10px;margin-bottom:8px;">
-              <a href="/estoque/${i._id}" style="font-weight:900;color:var(--gold2)">${esc(i.nome)}</a>
+              <a href="/estoque/${i._id}" style="font-weight:900;color:#f5d36a;text-decoration:none;">${esc(i.nome)}</a>
               <div class="mini" style="margin-top:4px;">${esc(i.categoria || "Geral")} — ${esc(String(i.quantidade || 0))} ${esc(i.unidade || "un")} (mín: ${esc(String(i.minimo || 0))})</div>
             </div>
           `).join("") || `<div class="muted">Nenhum item em baixo estoque 👌</div>`
@@ -1823,24 +1671,13 @@ app.get("/estoque", requireLogin, async (req, res) => {
     <div class="spacer"></div>
 
     <div class="card">
-      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Lista de itens</div>
+      <div style="color:#f5d36a;font-weight:900;margin-bottom:10px;">Lista de itens</div>
       <div class="tablewrap">
         <table style="min-width:1000px;">
           <thead>
-            <tr>
-              <th>Item</th>
-              <th>Status</th>
-              <th>Qtd</th>
-              <th>Mín</th>
-              <th>Custo</th>
-              <th>Fornecedor</th>
-              <th>Local</th>
-              <th>Ação</th>
-            </tr>
+            <tr><th>Item</th><th>Status</th><th>Qtd</th><th>Mín</th><th>Custo</th><th>Fornecedor</th><th>Local</th><th>Ação</th></tr>
           </thead>
-          <tbody>
-            ${linhas || `<tr><td colspan="8" class="muted" style="padding:12px;">Nenhum item cadastrado.</td></tr>`}
-          </tbody>
+          <tbody>${linhas || `<tr><td colspan="8" class="muted" style="padding:12px;">Nenhum item cadastrado.</td></tr>`}</tbody>
         </table>
       </div>
     </div>
@@ -1873,245 +1710,6 @@ app.post("/estoque/:id/delete", requireLogin, async (req, res) => {
   await EstoqueMov.deleteMany({ itemId: req.params.id });
   await EstoqueItem.findByIdAndDelete(req.params.id);
   res.redirect("/estoque");
-});
-
-app.get("/estoque/:id", requireLogin, async (req, res) => {
-  const item = await EstoqueItem.findById(req.params.id);
-  if (!item) return res.send(layout("Estoque", `<div class="card">Item não encontrado. <a href="/estoque">Voltar</a></div>`));
-
-  const movs = await EstoqueMov.find({ itemId: item._id }).sort({ criadoEm: -1 }).limit(50);
-
-  const qtd = Number(item.quantidade || 0);
-  const min = Number(item.minimo || 0);
-  const estado =
-    qtd <= 0 ? `<span class="pill dangerpill">ZERADO</span>` :
-    qtd <= min ? `<span class="pill warn">BAIXO</span>` :
-    `<span class="pill">OK</span>`;
-
-  const linhasMov = movs.map(m => `
-    <tr>
-      <td>${esc(fmtDateBR(m.criadoEm))}</td>
-      <td>${esc(m.tipo)}</td>
-      <td>${esc(String(m.quantidade))}</td>
-      <td>${esc(m.motivo || "-")}</td>
-      <td>${m.pedidoNumero ? `#${esc(String(m.pedidoNumero).padStart(4,"0"))}` : "-"}</td>
-      <td>${m.custoUnitario != null ? `R$ ${money(m.custoUnitario)}` : "-"}</td>
-    </tr>
-  `).join("");
-
-  const conteudo = `
-    <div class="row" style="justify-content:space-between;margin-bottom:10px;">
-      <div>
-        <h2 class="h1">${esc(item.nome)}</h2>
-        <div class="muted">${esc(item.categoria || "Geral")} • ${estado}</div>
-      </div>
-      <div class="row">
-        <a class="btn" href="/estoque">← Voltar</a>
-      </div>
-    </div>
-
-    <div class="grid grid-3">
-      <div class="card kpi">
-        <div class="label">Quantidade</div>
-        <div class="value">${esc(String(qtd))} ${esc(item.unidade || "un")}</div>
-        <div class="muted">Mínimo: ${esc(String(min))}</div>
-      </div>
-      <div class="card kpi">
-        <div class="label">Custo (referência)</div>
-        <div class="value">R$ ${money(item.custo || 0)}</div>
-        <div class="muted">Fornecedor: ${esc(item.fornecedor || "-")}</div>
-      </div>
-      <div class="card kpi">
-        <div class="label">Local</div>
-        <div class="value">${esc(item.local || "-")}</div>
-        <div class="muted">Atualizado: ${esc(fmtDateBR(item.atualizadoEm))}</div>
-      </div>
-    </div>
-
-    <div class="spacer"></div>
-
-    <div class="grid grid-2">
-      <div class="card">
-        <div style="color:var(--gold2);font-weight:900;margin-bottom:8px;">Movimentar estoque</div>
-        <form method="POST" action="/estoque/${item._id}/mov">
-          <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
-            <div>
-              <div class="mini">Tipo</div>
-              <select class="input" name="tipo">
-                <option>Entrada</option>
-                <option>Saída</option>
-                <option>Ajuste</option>
-              </select>
-            </div>
-            <div>
-              <div class="mini">Quantidade</div>
-              <input class="input" name="quantidade" required placeholder="Ex: 10">
-            </div>
-          </div>
-
-          <div class="spacer"></div>
-
-          <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
-            <div>
-              <div class="mini">Motivo (opcional)</div>
-              <input class="input" name="motivo" placeholder="Ex: compra / uso em pedido / ajuste inventário">
-            </div>
-            <div>
-              <div class="mini">Custo unit. (entrada, opcional)</div>
-              <input class="input" name="custoUnitario" placeholder="Ex: 2,50">
-            </div>
-          </div>
-
-          <div class="spacer"></div>
-
-          <div>
-            <div class="mini">Vincular ao pedido (nº opcional)</div>
-            <input class="input" name="pedidoNumero" placeholder="Ex: 12">
-          </div>
-
-          <div class="spacer"></div>
-
-          <button class="btn btn-gold" type="submit">Salvar movimentação</button>
-        </form>
-      </div>
-
-      <div class="card">
-        <div style="color:var(--gold2);font-weight:900;margin-bottom:8px;">Editar dados do item</div>
-        <form method="POST" action="/estoque/${item._id}/edit">
-          <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
-            <div>
-              <div class="mini">Categoria</div>
-              <input class="input" name="categoria" value="${esc(item.categoria || "Geral")}">
-            </div>
-            <div>
-              <div class="mini">Unidade</div>
-              <input class="input" name="unidade" value="${esc(item.unidade || "un")}">
-            </div>
-            <div>
-              <div class="mini">Mínimo</div>
-              <input class="input" name="minimo" value="${esc(String(item.minimo || 0))}">
-            </div>
-            <div>
-              <div class="mini">Custo</div>
-              <input class="input" name="custo" value="${esc(money(item.custo || 0))}">
-            </div>
-          </div>
-
-          <div class="spacer"></div>
-
-          <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;">
-            <div>
-              <div class="mini">Fornecedor</div>
-              <input class="input" name="fornecedor" value="${esc(item.fornecedor || "")}">
-            </div>
-            <div>
-              <div class="mini">Local</div>
-              <input class="input" name="local" value="${esc(item.local || "")}">
-            </div>
-          </div>
-
-          <div class="spacer"></div>
-
-          <div>
-            <div class="mini">Observação</div>
-            <input class="input" name="observacao" value="${esc(item.observacao || "")}">
-          </div>
-
-          <div class="spacer"></div>
-
-          <button class="btn btn-gold" type="submit">Salvar dados</button>
-        </form>
-      </div>
-    </div>
-
-    <div class="spacer"></div>
-
-    <div class="card">
-      <div style="color:var(--gold2);font-weight:900;margin-bottom:10px;">Histórico (últimas 50)</div>
-      <div class="tablewrap">
-        <table style="min-width:900px;">
-          <thead>
-            <tr>
-              <th>Data</th>
-              <th>Tipo</th>
-              <th>Qtd</th>
-              <th>Motivo</th>
-              <th>Pedido</th>
-              <th>Custo unit.</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${linhasMov || `<tr><td colspan="6" class="muted" style="padding:12px;">Sem movimentações ainda.</td></tr>`}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `;
-  res.send(layout("Item do estoque", conteudo));
-});
-
-app.post("/estoque/:id/edit", requireLogin, async (req, res) => {
-  const minimo = Number(String(req.body.minimo || "0").replace(",", "."));
-  const custo = parseMoneyBR(req.body.custo);
-
-  await EstoqueItem.findByIdAndUpdate(req.params.id, {
-    categoria: String(req.body.categoria || "Geral").trim() || "Geral",
-    unidade: String(req.body.unidade || "un").trim() || "un",
-    minimo: Number.isFinite(minimo) ? minimo : 0,
-    custo: Number.isFinite(custo) ? custo : 0,
-    fornecedor: String(req.body.fornecedor || "").trim(),
-    local: String(req.body.local || "").trim(),
-    observacao: String(req.body.observacao || "").trim(),
-    atualizadoEm: new Date(),
-  });
-
-  res.redirect(`/estoque/${req.params.id}`);
-});
-
-app.post("/estoque/:id/mov", requireLogin, async (req, res) => {
-  const item = await EstoqueItem.findById(req.params.id);
-  if (!item) return res.redirect("/estoque");
-
-  const tipo = String(req.body.tipo || "Entrada").trim();
-  const qtd = Number(String(req.body.quantidade || "0").replace(",", "."));
-  if (!Number.isFinite(qtd) || qtd <= 0) {
-    return res.send(layout("Erro", `<div class="card">Quantidade inválida. <a href="/estoque/${item._id}">Voltar</a></div>`));
-  }
-
-  const motivo = String(req.body.motivo || "").trim();
-  const pedidoNumeroRaw = String(req.body.pedidoNumero || "").trim();
-  const pedidoNumero = pedidoNumeroRaw ? Number(pedidoNumeroRaw) : null;
-
-  const custoUnitario = String(req.body.custoUnitario || "").trim()
-    ? parseMoneyBR(req.body.custoUnitario)
-    : null;
-
-  let novaQtd = Number(item.quantidade || 0);
-
-  if (tipo === "Entrada") {
-    novaQtd += qtd;
-    if (custoUnitario != null && Number.isFinite(custoUnitario)) item.custo = custoUnitario;
-  } else if (tipo === "Saída") {
-    novaQtd -= qtd;
-    if (novaQtd < 0) novaQtd = 0;
-  } else {
-    novaQtd = qtd; // Ajuste = setar
-  }
-
-  await EstoqueMov.create({
-    itemId: item._id,
-    tipo,
-    quantidade: qtd,
-    motivo,
-    pedidoNumero: Number.isFinite(pedidoNumero) ? pedidoNumero : null,
-    custoUnitario: (custoUnitario != null && Number.isFinite(custoUnitario)) ? custoUnitario : null,
-  });
-
-  item.quantidade = novaQtd;
-  item.atualizadoEm = new Date();
-  await item.save();
-
-  res.redirect(`/estoque/${item._id}`);
 });
 
 // ===== START =====
