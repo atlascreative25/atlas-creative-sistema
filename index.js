@@ -36,7 +36,9 @@ function requireLogin(req, res, next) {
   if (!req.session.logado) return res.redirect("/");
   next();
 }
-
+function icon(id){
+  return `<svg class="ico" aria-hidden="true"><use href="/icons.svg#${id}"></use></svg>`;
+}
 function esc(s) {
   return String(s ?? "")
     .replaceAll("&", "&amp;")
@@ -188,7 +190,14 @@ function buildWhatsTemplates({ clienteNome, pedidoNumero, produtoDesc, tipoProdu
 }
 
 // ===== LAYOUT (luxo + logo no topo + PWA + app.css + SW) =====
-function layout(titulo, conteudo) {
+function layout(titulo, conteudo, activePath = "") {
+  const isActive = (p) => (activePath || "").startsWith(p);
+
+  const link = (href, label, icoId) => {
+    const cls = "sb-link" + (isActive(href) ? " active" : "");
+    return `<a class="${cls}" href="${href}">${icon(icoId)} <span>${label}</span></a>`;
+  };
+
   return `
   <html>
   <head>
@@ -201,11 +210,8 @@ function layout(titulo, conteudo) {
     <link rel="apple-touch-icon" href="/icon-192.png">
 
     <link rel="stylesheet" href="/app.css">
-
     <script>
-      function toggleSidebar(){
-        document.body.classList.toggle('sb-open');
-      }
+      function toggleSidebar(){ document.body.classList.toggle('sb-open'); }
     </script>
   </head>
 
@@ -220,13 +226,13 @@ function layout(titulo, conteudo) {
       </div>
 
       <nav class="sb-nav">
-        <a class="sb-link" href="/dashboard">🏠 Dashboard</a>
-        <a class="sb-link" href="/clientes">👤 Clientes</a>
-        <a class="sb-link" href="/novo">➕ Novo Pedido</a>
-        <a class="sb-link" href="/produtos">🏷️ Produtos</a>
-        <a class="sb-link" href="/estoque">📦 Estoque</a>
-        <a class="sb-link" href="/financeiro">💰 Financeiro</a>
-        <a class="sb-link danger" href="/logout">🚪 Sair</a>
+        ${link("/dashboard","Dashboard","i-home")}
+        ${link("/clientes","Clientes","i-users")}
+        ${link("/novo","Novo Pedido","i-plus")}
+        ${link("/produtos","Produtos","i-tag")}
+        ${link("/estoque","Estoque","i-box")}
+        ${link("/financeiro","Financeiro","i-cash")}
+        <a class="sb-link danger" href="/logout">${icon("i-logout")} <span>Sair</span></a>
       </nav>
 
       <div class="sb-footer">
@@ -247,20 +253,18 @@ function layout(titulo, conteudo) {
         </div>
       </header>
 
-     <section class="content">
-  <div class="page">
-    ${conteudo}
-  </div>
-</section>
+      <section class="content">
+        <div class="page">
+          ${conteudo}
+        </div>
+      </section>
+    </main>
 
     <script>
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js');
-      }
+      if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
     </script>
   </body>
-  </html>
-  `;
+  </html>`;
 }
 
 // ===== CONSTANTES =====
