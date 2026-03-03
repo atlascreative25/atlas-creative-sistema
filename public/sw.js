@@ -1,4 +1,4 @@
-const CACHE_VERSION = "atlas-v15";
+const CACHE_VERSION = "atlas-erp-v3";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 const PRECACHE_URLS = [
