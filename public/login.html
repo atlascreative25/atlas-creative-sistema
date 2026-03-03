@@ -1,12 +1,42 @@
-<body style="background:black;color:white;text-align:center;font-family:sans-serif">
-  <h1 style="color:gold;">Atlas Creative</h1>
-  <h2>Sistema de Gestão</h2>
+app.get("/", (req,res)=>{
+  res.send(`
+  <html>
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>Login • Atlas Creative</title>
+    <link rel="stylesheet" href="/app.css">
+  </head>
+  <body>
+    <div class="login-wrap">
+      <div class="login-card">
+        <div class="login-head">
+          <img class="login-logo" src="/icon-192.png" alt="Atlas Creative">
+          <div>
+            <div class="login-title">Atlas Creative</div>
+            <div class="login-sub">Acesse o sistema com seu login</div>
+          </div>
+        </div>
 
-  <form method="POST" action="/login">
-    <input name="email" placeholder="Email" required><br><br>
-    <input name="senha" type="password" placeholder="Senha" required><br><br>
-    <button style="background:gold;color:black;padding:10px 20px;border:none;">
-      Entrar
-    </button>
-  </form>
-</body>
+        <form class="login-form" method="POST" action="/login">
+          <div class="login-row">
+            <div class="label">Email</div>
+            <input name="email" type="email" placeholder="seuemail@gmail.com" required>
+          </div>
+
+          <div class="login-row">
+            <div class="label">Senha</div>
+            <input name="senha" type="password" placeholder="••••••••" required>
+          </div>
+
+          <div class="login-actions">
+            <button class="btn btn-gold" type="submit">${icon("i-lock")} Entrar</button>
+            <div class="login-hint">Sistema privado • uso exclusivo</div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </body>
+  </html>
+  `);
+});
