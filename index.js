@@ -205,7 +205,7 @@ function layout(titulo, conteudo) {
     <title>${esc(titulo)}</title>
 
     <!-- PWA -->
-    <link rel="manifest" href="/manifest.json">
+    <link rel="stylesheet" href="/app.css">
     <meta name="theme-color" content="#d7b25a">
     <link rel="apple-touch-icon" href="/icon-192.png">
 
